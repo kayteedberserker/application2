@@ -1,39 +1,43 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator, Alert, FlatList,
-    Image, Platform, Pressable, Text, TextInput,
-    TouchableOpacity, View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Image,
+    Platform,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
+import useSWRInfinite from "swr/infinite";
 import { useUser } from "../../context/UserContext";
 
 const API_BASE = "https://oreblogda.com/api";
+const LIMIT = 5;
+
+const fetcher = (url) => fetch(url).then((res) => res.json());
 
 export default function MobileProfilePage() {
     const { user, setUser } = useUser();
-    const router = useRouter()
-    // States
+    const router = useRouter();
+
     const [description, setDescription] = useState("");
     const [preview, setPreview] = useState(null);
     const [imageFile, setImageFile] = useState(null);
-    const [posts, setPosts] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [loadingPosts, setLoadingPosts] = useState(true);
-    const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(true);
-    const limit = 5;
+    const [isUpdating, setIsUpdating] = useState(false);
 
-    // 🔹 1. Sync User Data from DB using deviceId (Fingerprint)
+    // 🔹 1. Sync User Data from DB
     useEffect(() => {
         const syncUserWithDB = async () => {
             if (!user?.deviceId) return;
             try {
-                // Fetch full user data (gets us the real MongoDB _id)
                 const res = await fetch(`${API_BASE}/users/me?fingerprint=${user.deviceId}`);
                 const dbUser = await res.json();
-
                 if (res.ok) {
                     setUser(dbUser);
                     setDescription(dbUser.description || "");
@@ -45,34 +49,31 @@ export default function MobileProfilePage() {
         syncUserWithDB();
     }, [user?.deviceId]);
 
-    // 🔹 2. Fetch Posts (Only triggers once we have the real user._id)
-    useEffect(() => {
-        
-        if (user?._id) {
-            fetchUserPosts(page);
-        }
-    }, [user?._id, page]);
-
-    const fetchUserPosts = async (pageNum) => {
-        
-        if (!user?._id) return;
-        try {
-            setLoadingPosts(true);
-            const res = await fetch(`${API_BASE}/posts?author=${user._id}&page=${pageNum}&limit=${limit}`);
-            const data = await res.json();
-            const newPosts = data.posts || [];
-
-            if (newPosts.length < limit) setHasMore(false)
-            setPosts(prev => pageNum === 1 ? newPosts : [...prev, ...newPosts])
-        } catch (err) {
-            console.error("Fetch Posts Error:", err)
-        } finally {
-            setLoadingPosts(false);
-        }
+    // 🔹 2. SWR Infinite with live settings
+    const getKey = (pageIndex, previousPageData) => {
+        if (!user?._id) return null; // Wait for synced ID
+        if (previousPageData && previousPageData.posts.length < LIMIT) return null; // End of data
+        return `${API_BASE}/posts?author=${user._id}&page=${pageIndex + 1}&limit=${LIMIT}`;
     };
 
+    const { data, size, setSize, isLoading, isValidating, mutate } = useSWRInfinite(getKey, fetcher, {
+        refreshInterval: 10000,   // Live updates every 10s
+        revalidateOnFocus: true,  // Refresh when app is opened
+        dedupingInterval: 5000,   // Prevent double-calls
+    });
+
+    const posts = useMemo(() => {
+        return data ? data.flatMap((page) => page.posts || []) : [];
+    }, [data]);
+
+    // 🔹 Advanced Loading Logic
+    const isLoadingInitialData = isLoading && !data; 
+    const isReachingEnd = data && data[data.length - 1]?.posts.length < LIMIT;
+    // Only show footer spinner if we are explicitly loading a NEW page (size increased)
+    const isFetchingNextPage = isValidating && data && typeof data[size - 1] === "undefined";
+
     const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
+        const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             aspect: [1, 1],
@@ -91,7 +92,7 @@ export default function MobileProfilePage() {
     };
 
     const handleUpdate = async () => {
-        setLoading(true);
+        setIsUpdating(true);
         try {
             const formData = new FormData();
             formData.append("userId", user?._id || "");
@@ -99,13 +100,10 @@ export default function MobileProfilePage() {
             formData.append("description", description);
 
             if (imageFile) {
-                if (Platform.OS === 'web') {
-                    // 🌐 WEB FIX: Fetch the local URI and turn it into a Blob
-                    const response = await fetch(imageFile.uri);
-                    const blob = await response.blob();
+                if (Platform.OS === "web") {
+                    const blob = await (await fetch(imageFile.uri)).blob();
                     formData.append("file", blob, "profile.jpg");
                 } else {
-                    // 📱 MOBILE: Use the standard object
                     formData.append("file", imageFile);
                 }
             }
@@ -117,17 +115,15 @@ export default function MobileProfilePage() {
 
             const result = await res.json();
             if (res.ok) {
-                Alert.alert("Success", "Profile updated successfully!");
                 setUser(result.user);
                 setPreview(null);
                 setImageFile(null);
-            } else {
-                Alert.alert("Update Failed", result.message);
+                Alert.alert("Success", "Profile updated successfully!");
             }
         } catch (err) {
-            Alert.alert("Error", "Failed to connect to server.");
+            Alert.alert("Error", "Failed to update profile.");
         } finally {
-            setLoading(false);
+            setIsUpdating(false);
         }
     };
 
@@ -139,157 +135,111 @@ export default function MobileProfilePage() {
                 style: "destructive",
                 onPress: async () => {
                     try {
-                        const res = await fetch(`${API_BASE}/posts/delete`, {
+                        await fetch(`${API_BASE}/posts/delete`, {
                             method: "DELETE",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ postId, fingerprint: user?.deviceId }),
                         });
-                        if (res.ok) {
-                            setPosts(prev => prev.filter(p => p._id !== postId));
-                        }
+                        mutate(); // Instant refresh
                     } catch (err) {
-                        Alert.alert("Error", "Error deleting post");
+                        Alert.alert("Error", "Failed to delete.");
                     }
-                }
-            }
+                },
+            },
         ]);
     };
 
-    // 🔹 Memoized Header to prevent focus-loss on TextInput
     const listHeader = useMemo(() => (
         <View className="px-6">
-            <Text style={{ marginTop: 0 }} className="text-2xl font-semibold dark:text-white">Edit Profile</Text>
-
+            <Text className="text-2xl font-semibold dark:text-white">Edit Profile</Text>
             <View className="items-center justify-center my-8">
                 <TouchableOpacity onPress={pickImage} className="relative">
                     <Image
-                        source={{
-                            uri: preview
-                                ? preview
-                                : (user?.profilePic?.url)
-                                    ? user.profilePic.url
-                                    : "https://via.placeholder.com/150"
-                        }}
+                        source={{ uri: preview || user?.profilePic?.url || "https://via.placeholder.com/150" }}
                         style={{ width: 112, height: 112, borderRadius: 56 }}
                         className="border-2 border-blue-600 bg-gray-200"
-                        resizeMode="cover"
                     />
-                    <View className="absolute bottom-0 right-0 bg-blue-600 p-2 rounded-full border-2 border-white dark:border-gray-900">
+                    <View className="absolute bottom-0 right-0 bg-blue-600 p-2 rounded-full">
                         <Ionicons name="camera" size={20} color="white" />
                     </View>
                 </TouchableOpacity>
             </View>
-
-            <View className="mb-10">
-                <View className="mb-5">
-                    <Text className="mb-1 text-sm font-medium text-gray-600 dark:text-gray-400">Name</Text>
-                    <TextInput
-                        value={user?.username || "Guest Author"}
-                        editable={false}
-                        style={{ outlineStyle: 'none' }}
-                        className="border border-gray-300 rounded-lg w-full p-3 bg-gray-200 text-black"
-                    />
-                </View>
-
-                <View className="mb-5">
-                    <Text className="mb-1 text-sm font-medium text-gray-600 dark:text-gray-400">Description</Text>
-                    <TextInput
-                        multiline
-                        value={description}
-                        selectionColor="#2563eb"
-                        underlineColorAndroid="transparent"
-                        onChangeText={(text) => setDescription(text)}
-                        placeholder="Write something about yourself..."
-                        className="border border-gray-300 rounded-lg w-full p-3 h-28 text-black bg-white"
-                        style={{ textAlignVertical: 'top', outlineStyle: 'none' }}
-                    />
-                </View>
-
-                <TouchableOpacity
-                    onPress={handleUpdate}
-                    disabled={loading}
-                    className="bg-blue-600 p-4 rounded-lg w-full items-center mt-2"
-                >
-                    {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold text-lg">Save Changes</Text>}
-                </TouchableOpacity>
-            </View>
-
-            <Text className="text-xl font-semibold mb-4 dark:text-white">Ore Posts</Text>
+            <TextInput
+                value={user?.username || "Guest Author"}
+                editable={false}
+                className="border p-3 rounded bg-gray-200 mb-4 text-gray-600"
+            />
+            <TextInput
+                multiline
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Write a description..."
+                className="border p-3 rounded h-28 bg-white mb-4"
+                style={{ textAlignVertical: 'top' }}
+            />
+            <TouchableOpacity
+                onPress={handleUpdate}
+                disabled={isUpdating}
+                className="bg-blue-600 p-4 rounded-lg w-full items-center"
+            >
+                {isUpdating ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold text-lg">Save Changes</Text>}
+            </TouchableOpacity>
+            <Text className="text-xl font-semibold mb-4 dark:text-white mt-10">Ore Posts</Text>
         </View>
-    ), [user, preview, description, loading]);
+    ), [user, preview, description, isUpdating]);
 
     return (
-        <FlatList
+            <FlatList
             data={posts}
             keyExtractor={(item) => item._id}
             ListHeaderComponent={listHeader}
             className="bg-white dark:bg-gray-900"
-            onEndReached={() => hasMore && !loadingPosts && setPage(p => p + 1)}
+            onEndReached={() => {
+                if (!isReachingEnd && !isValidating) {
+                    setSize(size + 1);
+                }
+            }}
             onEndReachedThreshold={0.5}
             renderItem={({ item }) => (
-                <View className="px-6 pb-20">
-                    <View className="mx-6 border border-gray-200 p-4 max-w-[80%] rounded-xl flex-row justify-between items-center mb-4 bg-gray-50 dark:bg-gray-900">
-
-                        {/* CLICKABLE CONTENT */}
-                        <Pressable
-                            onPress={() => router.push(`/post/${item.slug || item._id}`)}
-                            className="flex-1 mr-4"
-                        >
-                            <Text
-                                className="font-medium text-lg dark:text-white"
-                                numberOfLines={1}
-                            >
+                <View className="px-6 mb-10">
+                    <View className="mx-6 border border-gray-200 p-4 max-w-[80%] rounded-xl flex-row justify-between items-center bg-gray-50 dark:bg-gray-800">
+                        <Pressable onPress={() => router.push(`/post/${item.slug || item._id}`)} className="flex-1 mr-4">
+                            <Text className="font-medium text-lg dark:text-white" numberOfLines={1}>
                                 {item.title || item.message}
                             </Text>
-
                             <Text className="text-gray-500 text-xs mt-1">
                                 {new Date(item.createdAt).toLocaleDateString()}
                             </Text>
-
-                            {/* MINI ANALYTICS */}
                             <View className="flex-row items-center gap-4 mt-2">
-                                {/* Likes */}
                                 <View className="flex-row items-center gap-1">
                                     <Ionicons name="heart-outline" size={14} color="#9ca3af" />
-                                    <Text className="text-gray-500 text-xs">
-                                        {item.likes?.length || 0}
-                                    </Text>
+                                    <Text className="text-gray-500 text-xs">{item.likes?.length || 0}</Text>
                                 </View>
-
-                                {/* Comments */}
                                 <View className="flex-row items-center gap-1">
                                     <Ionicons name="chatbubble-outline" size={14} color="#9ca3af" />
-                                    <Text className="text-gray-500 text-xs">
-                                        {item.comments?.length || 0}
-                                    </Text>
+                                    <Text className="text-gray-500 text-xs">{item.comments?.length || 0}</Text>
                                 </View>
-
-                                {/* Views */}
                                 <View className="flex-row items-center gap-1">
                                     <Ionicons name="eye-outline" size={14} color="#9ca3af" />
-                                    <Text className="text-gray-500 text-xs">
-                                        {item.views || 0}
-                                    </Text>
+                                    <Text className="text-gray-500 text-xs">{item.views || 0}</Text>
                                 </View>
                             </View>
-
                         </Pressable>
-
-                        {/* DELETE */}
                         <TouchableOpacity onPress={() => handleDelete(item._id)}>
                             <Text className="text-red-500 font-bold">Delete</Text>
                         </TouchableOpacity>
-
                     </View>
                 </View>
-
-
-
             )}
-            ListEmptyComponent={() => !loadingPosts && (
-                <Text className="text-center text-gray-400 py-10">You haven't posted yet.</Text>
-            )}
-            ListFooterComponent={() => loadingPosts && <ActivityIndicator className="py-4" />}
+            ListEmptyComponent={() => {
+                // Shows spinner only on very first empty load
+                if (isLoadingInitialData) return <ActivityIndicator className="py-10" color="#2563eb" />;
+                return <Text className="text-center text-gray-400 py-10">You haven't posted yet.</Text>;
+            }}
+            ListFooterComponent={() => {
+                // Footer spinner ONLY shows when user triggers "load more", not on background syncs
+                return isFetchingNextPage ? <ActivityIndicator className="py-4" color="#2563eb" /> : null;
+            }}
         />
     );
 }

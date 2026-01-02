@@ -40,9 +40,10 @@ export default function SimilarPosts({ category, currentPostId }) {
           return (
             <React.Fragment key={post._id}>
               {/* Post Item */}
-              <View className="mr-4 w-72">
+              <View className="mr-4 w-[320px]">
                 <PostCard
                   post={post}
+                  similarPosts={true}
                   posts={shuffledPosts}
                   setPosts={() => {}}
                   isFeed={true}

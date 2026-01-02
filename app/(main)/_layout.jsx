@@ -12,7 +12,7 @@ import {
 	View,
 	useColorScheme as useSystemScheme,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../../context/UserContext";
 import "../globals.css";
 import CategoryNav from "./../../components/CategoryNav";
@@ -32,7 +32,7 @@ export default function MainLayout() {
     if (!contextLoading && !user) {
         return <Redirect href="/screens/FirstLaunchScreen" />;
     }
-
+	const insets = useSafeAreaInsets();
     // While context is fetching from AsyncStorage, show a simple loader
     if (contextLoading) {
         return (
@@ -122,7 +122,7 @@ export default function MainLayout() {
 					tabBarInactiveTintColor: isDark ? "#94a3b8" : "#64748b",
 					tabBarStyle: {
 						position: "absolute",
-						bottom: 15,
+						bottom: insets.bottom + 15, // 🔥 FIX
 						height: 55,
 						transform: [{ translateX: '15%' }],
 						width: "70%",
@@ -172,7 +172,7 @@ export default function MainLayout() {
 			<View
 				style={{
 					position: "absolute",
-					bottom: 20,
+					bottom: insets.bottom + 20, // 🔥 FIX
 					right: 15,
 					gap: 10,
 					alignItems: "center",

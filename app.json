@@ -33,11 +33,6 @@
               "scheme": "https",
               "host": "oreblogda.com",
               "pathPrefix": "/"
-            },
-            {
-              "scheme": "https",
-              "host": "www.oreblogda.com",
-              "pathPrefix": "/"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

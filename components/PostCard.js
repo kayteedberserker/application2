@@ -24,7 +24,7 @@ import { Text } from "./Text";
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
-export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
+export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPosts }) {
     const router = useRouter();
     const { user } = useUser();
     const colorScheme = useColorScheme();
@@ -75,7 +75,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
                 const viewedKey = "viewedPosts";
                 const stored = await AsyncStorage.getItem(viewedKey);
                 const viewed = stored ? JSON.parse(stored) : [];
-                
+
                 // 2. Check if already viewed
                 if (viewed.includes(post._id)) return;
                 // 3. Update the Server (Using your Vercel URL)
@@ -87,7 +87,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
                         fingerprint: user.deviceId
                     }),
                 });
-                
+
                 if (res.ok) {
                     // 4. Update Local Storage (Keep only the last 200 to save memory)
                     const newViewed = [...viewed, post._id].slice(-200);
@@ -95,7 +95,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
 
                     // 5. Mutate only if the function exists
                     if (typeof mutate === 'function') {
-                        
+
                         mutate();
                     }
                 }
@@ -140,21 +140,44 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
 
     // Handle Like
     const handleLike = async () => {
+        // 1. Basic Auth/Status Check
         if (liked || !user) {
             if (!user) Alert.alert("Hold on", "Please register to interact with posts.");
             router.replace("screens/FirstLaunchScreen");
             return;
         }
 
+        const fingerprint = user?.deviceId;
+
         try {
-            // Optimistic UI update
+            // 2. IMMEDIATE UI UPDATE (No Rollback)
+            // This updates the heart icon and the count instantly.
             setLiked(true);
+
             mutate(
-                { ...postData, likes: [...(postData?.likes || []), { fingerprint: user.deviceId }] },
-                false
+                {
+                    ...postData,
+                    likes: [...(postData?.likes || []), { fingerprint }]
+                },
+                {
+                    revalidate: false,      // Do NOT refetch from server (prevents flicker)
+                    populateCache: true,    // Update the local storage immediately
+                    rollbackOnError: false  // NEVER jump back, even if it fails
+                }
             );
 
-            // Save to AsyncStorage
+            // 3. SILENT BACKEND SYNC
+            // We fire this and don't "await" it in a way that blocks the UI.
+            fetch(`https://oreblogda.com/api/posts/${post?._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "like", fingerprint }),
+            }).catch(err => {
+                // If it fails, we just log it. The user still sees their "Like"
+                console.log("Silent background sync failed, but UI remains updated.");
+            });
+
+            // 4. Persistence
             const savedLikes = await AsyncStorage.getItem('user_likes');
             const likedList = savedLikes ? JSON.parse(savedLikes) : [];
             if (!likedList.includes(post?._id)) {
@@ -162,19 +185,12 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
                 await AsyncStorage.setItem('user_likes', JSON.stringify(likedList));
             }
 
-            // Sync with backend
-            const res = await fetch(`https://oreblogda.com/api/posts/${post?._id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "like", fingerprint: user.deviceId }),
-            });
-            const data = await res.json();
-            mutate(data); // Refresh SWR data
-            refreshPosts(data);
         } catch (err) {
-            console.error("Like sync failed", err);
+            console.error("Local like logic failed", err);
         }
     };
+
+
 
     // Handle Share
     const handleNativeShare = async () => {
@@ -350,7 +366,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
 
         if (isTikTok) {
             return (
-                <View className="w-full rounded-2xl overflow-hidden my-2 bg-black relative" style={{ height: 600 }}>
+                <View className="w-full rounded-2xl overflow-hidden my-2 bg-black relative" style={similarPosts ? { height: 200 } : {height: 600}}>
                     <WebView
                         source={{ uri: getTikTokEmbedUrl(post.mediaUrl) }}
                         userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1"
@@ -377,13 +393,13 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
                         )}
                     />
                 </View>
-            );
+            )
         }
 
         return (
             <Pressable
                 onPress={() => !isVideo ? setLightbox({ open: true, src: post.mediaUrl, type: "image" }) : null}
-                className="my-2 rounded-2xl overflow-hidden shadow-sm"
+                className="my-2 rounded-2xl overflow-hidden shadow-sm" style={similarPosts ? { height: 200 } : null}
             >
                 {isVideo ? (
                     <Video
@@ -456,27 +472,30 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia }) {
             {post.poll && <Poll poll={post.poll} postId={post?._id} deviceId={user?.deviceId} />}
 
             {/* Action Footer */}
-            <View className="flex-row items-center justify-between border-t border-gray-50 dark:border-gray-800 pt-2 mt-2">
-                <View className="flex-row items-center gap-2 space-x-6">
-                    <Pressable onPress={handleLike} disabled={liked} className="flex-row items-center">
-                        <Ionicons
-                            name={liked ? "heart" : "heart-outline"}
-                            size={22}
-                            color={liked ? "#ef4444" : isDark ? "#fff" : "#1f2937"}
-                        />
-                        <Text className={`ml-1 font-bold ${liked ? "text-red-500" : "text-gray-600 dark:text-gray-400"}`}>{totalLikes}</Text>
-                    </Pressable>
+            {similarPosts ? null : (
+                <View className="flex-row items-center justify-between border-t border-gray-50 dark:border-gray-800 pt-2 mt-2">
+                    <View className="flex-row items-center gap-2 space-x-6">
+                        <Pressable onPress={handleLike} disabled={liked} className="flex-row items-center">
+                            <Ionicons
+                                name={liked ? "heart" : "heart-outline"}
+                                size={22}
+                                color={liked ? "#ef4444" : isDark ? "#fff" : "#1f2937"}
+                            />
+                            <Text className={`ml-1 font-bold ${liked ? "text-red-500" : "text-gray-600 dark:text-gray-400"}`}>{totalLikes}</Text>
+                        </Pressable>
 
-                    <View className="flex flex-row gap-1 items-center">
-                        <Feather name="message-circle" size={18} color={isDark ? "#fff" : "#1f2937"} />
-                        <Text key={totalComments}>{totalComments}</Text>
+                        <View className="flex flex-row gap-1 items-center">
+                            <Feather name="message-circle" size={18} color={isDark ? "#fff" : "#1f2937"} />
+                            <Text key={totalComments}>{totalComments}</Text>
+                        </View>
                     </View>
-                </View>
 
-                <Pressable onPress={handleNativeShare} className="p-2 bg-gray-50 dark:bg-gray-800 rounded-full">
-                    <Feather name="share-2" size={18} color={isDark ? "#fff" : "#1f2937"} />
-                </Pressable>
-            </View>
+                    <Pressable onPress={handleNativeShare} className="p-2 bg-gray-50 dark:bg-gray-800 rounded-full">
+                        <Feather name="share-2" size={18} color={isDark ? "#fff" : "#1f2937"} />
+                    </Pressable>
+                </View>
+            )}
+
 
             {/* Lightbox Modal */}
             <Modal visible={lightbox.open} transparent animationType="fade">
