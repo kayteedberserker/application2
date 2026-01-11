@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
-import { useRootNavigationState, useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
+
 import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator, Alert,
@@ -12,11 +13,14 @@ import {
     Switch, TextInput, TouchableOpacity,
     View
 } from "react-native";
-import { TestIds, useRewardedAd } from 'react-native-google-mobile-ads';
+import { useRewardedAd } from 'react-native-google-mobile-ads';
 import Toast from "react-native-toast-message";
 import useSWR from "swr";
+import AnimeLoading from "../../components/AnimeLoading";
+import { Text } from "../../components/Text";
+import { useStreak } from "../../context/StreakContext";
 import { useUser } from "../../context/UserContext";
-import { Text } from "./../../components/Text";
+import { AdConfig } from "../../utils/AdConfig";
 
 // 🔹 Notification Handler Configuration
 Notifications.setNotificationHandler({
@@ -29,16 +33,74 @@ Notifications.setNotificationHandler({
 
 const API_BASE = "https://oreblogda.com/api";
 const fetcher = (url) => fetch(url).then((res) => res.json());
+// 🔹 FIXED: Added the missing THEME object
+const THEME = {
+    bg: "#0a0a0a",
+    card: "#111111",
+    accent: "#2563eb",
+    red: "#ef4444",
+    border: "#1e293b",
+    glowBlue: "rgba(37, 99, 235, 0.07)",
+    glowRed: "rgba(239, 68, 68, 0.05)"
+};
+async function getUserTotalPosts(deviceId) {
+    if (!deviceId) return 0;
+
+    try {
+        const res = await fetch(`${API_BASE}/posts?author=${deviceId}`);
+        if (!res.ok) throw new Error("Failed to fetch posts");
+
+        const data = await res.json();
+        return data.posts?.length || 0;
+    } catch (err) {
+        console.error("Error fetching total posts:", err);
+        return 0;
+    }
+}
+
+/* ===================== RANK SYSTEM HELPERS ===========*/
+const resolveUserRank = (totalPosts) => {
+    const count = totalPosts;
+
+    const rankTitle =
+        count >= 200 ? "Master_Writer" :
+            count > 150 ? "Elite_Writer" :
+                count > 100 ? "Senior_Writer" :
+                    count > 50 ? "Novice_Writer" :
+                        count > 25 ? "Senior_Researcher" :
+                            "Novice_Researcher";
+
+    const rankIcon =
+        count > 200 ? "👑" :
+            count > 150 ? "💎" :
+                count > 100 ? "🔥" :
+                    count > 50 ? "⚔️" :
+                        count > 25 ? "📜" :
+                            "🛡️";
+
+    const postLimit =
+        rankTitle === "Master_Writer" ? 3 :
+            rankTitle === "Elite_Writer" ? 3 :
+                rankTitle === "Senior_Writer" ? 2 :
+                    rankTitle === "Novice_Writer" ? 2 :
+                        rankTitle === "Senior_Researcher" ? 1 :
+                            1;
+
+    return { rankTitle, rankIcon, postLimit };
+};
 
 export default function AuthorDiaryDashboard() {
     const { user, loading: contextLoading } = useUser();
-    const rootNavigationState = useRootNavigationState();
+    const { streak } = useStreak();
     const fingerprint = user?.deviceId;
     const router = useRouter();
+    
+    // Use refs to store listeners so they can be cleaned up properly
+    const notificationListener = useRef();
     const responseListener = useRef();
 
     // 1. Hook-based Ad Management
-    const { isLoaded, isEarnedReward, isClosed, load, show } = useRewardedAd(TestIds.REWARDED, {
+    const { isLoaded, isEarnedReward, isClosed, load, show } = useRewardedAd(AdConfig.rewarded, {
         requestNonPersonalizedAdsOnly: true,
     });
 
@@ -57,62 +119,91 @@ export default function AuthorDiaryDashboard() {
     const [uploading, setUploading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [timeLeft, setTimeLeft] = useState("");
+    const [userRank, setUserRank] = useState({ rankTitle: "Novice_Researcher", rankIcon: "🛡️", postLimit: 1 });
     const [canPostAgain, setCanPostAgain] = useState(false);
     const [rewardToken, setRewardToken] = useState(null);
-    const [isLoadingNotifications, setIsLoadingNotifications] = useState(true); // Loading state for notifications
+    const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
 
-    const { data: todayPostData, mutate: mutateTodayPost } = useSWR(
-        user?.deviceId ? `${API_BASE}/posts?author=${user.deviceId}&limit=1` : null,
+    useEffect(() => {
+        const fetchTotalPosts = async () => {
+            if (!user?.deviceId) return;
+            const total = await getUserTotalPosts(user?.deviceId);
+            const rank = resolveUserRank(total);
+            setUserRank(rank);
+        };
+        fetchTotalPosts()
+    }, [user?.deviceId]);
+
+    const maxPostsToday = userRank.postLimit;
+
+    const { data: todayPostsData, mutate: mutateTodayPosts } = useSWR(
+        user?.deviceId
+            ? `${API_BASE}/posts?author=${user.deviceId}&last24Hours=true`
+            : null,
         fetcher,
         { refreshInterval: 5000 }
     );
 
-    const todayPost = todayPostData?.posts?.[0] || null;
+    const todayPosts = todayPostsData?.posts || [];
+    const postsLast24h = todayPosts.length;
+    const todayPost = todayPosts.length > 0 ? todayPosts[0] : null;
 
-    // 🔹 2. Notification Permissions & Deep Linking
+    // 🔹 2. FIXED: Notification Permissions & Listener Cleanup
     useEffect(() => {
-        const prepareNotifications = async () => {
-            try {
+        let isMounted = true;
+
+        async function registerForPushNotificationsAsync() {
+            const { status: existingStatus } = await Notifications.getPermissionsAsync();
+            let finalStatus = existingStatus;
+            if (existingStatus !== 'granted') {
                 const { status } = await Notifications.requestPermissionsAsync();
-                if (status !== 'granted') {
-                    console.log('Notification permissions not granted');
-                }
-            } catch (error) {
-                console.error("Error requesting permissions:", error);
-            } finally {
-                // Stop the loading animation once initialization is done
-                setIsLoadingNotifications(false);
+                finalStatus = status;
             }
-        };
+            if (isMounted) setIsLoadingNotifications(false);
+        }
 
-        prepareNotifications();
+        registerForPushNotificationsAsync();
 
-        // 2. Set up the Response Listener
-        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-            router.push("authordiary");
+        // Listener for when a notification is received while app is foregrounded
+        notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+            
         });
 
-        // 3. THE FIX: Use .remove() instead of Notifications.removeNotificationSubscription
+        // Listener for when a user taps on a notification
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+            // Use a try-catch to ignore the navigation error if context isn't ready
+            try {
+                if (router) {
+                    router.push("/authordiary");
+                }
+            } catch (e) {
+                console.warn("Navigation attempted before context was ready");
+            }
+        });
+
         return () => {
+            isMounted = false;
+            // CORRECT CLEANUP: Call .remove() on the subscription object
+            if (notificationListener.current) {
+                notificationListener.current.remove();
+            }
             if (responseListener.current) {
                 responseListener.current.remove();
             }
         };
-    }, []);
+    }, [router]);
 
     // 3. Ad Lifecycle
     useEffect(() => {
         load();
     }, [load]);
 
-    // UPDATED Logic: When reward is earned, cancel pending notifications
     useEffect(() => {
         if (isEarnedReward) {
             const handleReward = async () => {
                 setRewardToken(`rewarded_${fingerprint}`);
                 setCanPostAgain(true);
 
-                // 🔹 CANCEL PENDING NOTIFICATION: User no longer needs a reminder for the cooldown
                 try {
                     await Notifications.cancelAllScheduledNotificationsAsync();
                 } catch (err) {
@@ -138,14 +229,19 @@ export default function AuthorDiaryDashboard() {
             const TWELVE_HOURS = 12 * 60 * 60 * 1000;
             const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
             const cooldownMs = todayPost.status === 'approved' ? TWENTY_FOUR_HOURS : TWELVE_HOURS;
+
             const endTime = referenceTime + cooldownMs;
 
             const scheduleDoneNotification = async (targetTime) => {
                 const triggerInSeconds = Math.floor((targetTime - new Date().getTime()) / 1000);
 
-                // Only schedule if user hasn't already used a reward to bypass
                 if (triggerInSeconds > 0 && !rewardToken) {
                     await Notifications.cancelAllScheduledNotificationsAsync();
+
+                    await Notifications.setNotificationChannelAsync('default', {
+                        name: 'Default',
+                        importance: Notifications.AndroidImportance.DEFAULT,
+                    });
 
                     await Notifications.scheduleNotificationAsync({
                         content: {
@@ -154,10 +250,14 @@ export default function AuthorDiaryDashboard() {
                             sound: true,
                             data: { screen: "AuthorDiaryDashboard" }
                         },
-                        trigger: { seconds: triggerInSeconds },
+                        trigger: {
+                            type: Notifications.SchedulableTriggerInputTypes.DATE,
+                            date: new Date(targetTime),
+                            channelId: 'default',
+                        },
                     });
                 }
-            };
+            }
 
             scheduleDoneNotification(endTime);
 
@@ -220,6 +320,7 @@ export default function AuthorDiaryDashboard() {
         setMessage(newText);
         setTimeout(() => setSelection({ start: cursorPosition, end: cursorPosition }), 10);
     };
+
     const [pickedImage, setPickedImage] = useState(false);
     const pickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, quality: 0.7 });
@@ -242,9 +343,7 @@ export default function AuthorDiaryDashboard() {
                     setMediaUrl(data.url); setMediaType(selected.type === "video" ? "video" : "image");
                     Toast.show({ type: 'success', text1: 'Media attached successfully!' });
                 }
-                else throw new Error(
-                    data.message
-                );
+                else throw new Error(data.message);
             } catch (err) {
                 Alert.alert("Error", "Upload failed: " + err.message);
                 Toast.show({ type: 'error', text1: 'Media attachment failed!' })
@@ -253,6 +352,26 @@ export default function AuthorDiaryDashboard() {
         }
     };
 
+    const updateStreak = async (deviceId) => {
+        if (!deviceId) throw new Error("Device ID is required");
+        try {
+            const res = await fetch(`${API_BASE}/users/streak`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ deviceId }),
+            })
+            if (!res.ok) {
+                const error = await res.json();
+                throw new Error(error.message || "Failed to update streak");
+            }
+            const data = await res.json();
+            return data;
+        } catch (err) {
+            console.error("Streak update error:", err);
+            return null;
+        }
+    }
+    const { refreshStreak } = useStreak()
     const handleSubmit = async () => {
         if (!title.trim() || !message.trim()) { Alert.alert("Error", "Title and Message are required."); return; }
         setSubmitting(true);
@@ -270,7 +389,7 @@ export default function AuthorDiaryDashboard() {
                 }),
             });
             const data = await response.json();
-
+            updateStreak(fingerprint);
             if (!response.ok) throw new Error(data.message || "Failed to create post");
             Alert.alert("Success", "Your entry has been submitted for approval!");
             setRewardToken(null);
@@ -279,7 +398,8 @@ export default function AuthorDiaryDashboard() {
             setMessage("");
             setMediaUrl("");
             setMediaUrlLink("");
-            mutateTodayPost();
+            mutateTodayPosts();
+            refreshStreak();
         } catch (err) { Alert.alert("Error", err.message); }
         finally { setSubmitting(false); setPickedImage(false) }
     };
@@ -302,25 +422,17 @@ export default function AuthorDiaryDashboard() {
         if (lastIndex < msg.length) parts.push({ type: "text", content: msg.slice(lastIndex) });
         return parts;
     };
+
     function normalizePostContent(content) {
         if (!content || typeof content !== "string") return content;
-
-        let cleaned = content;
-
-        // 1️⃣ Remove whitespace BEFORE opening tags
+        let cleaned = content
         cleaned = cleaned.replace(/\s+\[(h|li|section)\]/g, "[$1]");
-
-        // 2️⃣ Remove whitespace AFTER opening tags
         cleaned = cleaned.replace(/\[(h|li|section)\]\s+/g, "[$1]");
-
-        // 3️⃣ Remove whitespace BEFORE closing tags
         cleaned = cleaned.replace(/\s+\[\/(h|li|section)\]/g, "[/$1]");
-
-        // 4️⃣ Remove whitespace AFTER closing tags
         cleaned = cleaned.replace(/\[\/(h|li|section)\]\s+/g, "[/$1]");
-
         return cleaned.trim();
     }
+
     const renderPreviewContent = () => {
         const WORD_THRESHOLD = 90;
         let totalWordCount = 0;
@@ -404,167 +516,217 @@ export default function AuthorDiaryDashboard() {
         return <View className="px-4 py-1">{finalElements}</View>;
     };
 
-    // 🔹 Loading View (Includes notification loading state)
-    if (contextLoading || isLoadingNotifications || !rootNavigationState?.key) {
-        return (
-            <View className="flex-1 justify-center items-center bg-white dark:bg-gray-900">
-                <ActivityIndicator size="large" color="#3b82f6" />
-                <Text className="mt-4 text-gray-500 animate-pulse">Syncing Diary...</Text>
-            </View>
-        );
+    if (contextLoading || submitting || uploading) {
+        return <AnimeLoading message={submitting ? "Submitting" : uploading ? "Uploading" : "Loading"} subMessage="Fetching Otaku diary" />
     }
-
     return (
-        <View className="flex-1 bg-white dark:bg-gray-900">
-            <StatusBar barStyle="dark-content" />
-            <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
-                <View className="flex-row justify-between items-center mt-2 mb-6">
-                    <Text className="text-2xl font-bold dark:text-white">Welcome, {user?.username} 👋</Text>
+        <View style={{ flex: 1, backgroundColor: THEME.bg }}>
+            <StatusBar barStyle="light-content" />
+
+            {/* --- AMBIENT BACKGROUND GLOWS --- */}
+            <View style={{ position: 'absolute', top: -100, right: -100, width: 400, height: 400, borderRadius: 200, backgroundColor: THEME.glowBlue }} />
+            <View style={{ position: 'absolute', bottom: -100, left: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowRed }} />
+
+            <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
+                
+                {/* --- HEADER --- */}
+                <View className="flex-row justify-between items-end mt-4 mb-8 border-b border-gray-800 pb-6">
+                    <View>
+                        <View className="flex-row items-center mb-1">
+                            <View className="h-2 w-2 bg-blue-600 rounded-full mr-2" style={{ shadowColor: '#2563eb', shadowRadius: 8, shadowOpacity: 0.8 }} />
+                            <Text className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Authorized Session</Text>
+                        </View>
+                        <Text className="text-3xl font-black italic uppercase text-white">
+                            Welcome, <Text className="text-blue-600">{user?.username}</Text>
+                        </Text>
+                    </View>
+                    <View className="bg-gray-900 px-3 py-1 rounded-lg border border-gray-800">
+                        <Text className="text-white font-bold text-xs">🔥 {streak?.streak || 0}</Text>
+                    </View>
                 </View>
 
-                <View className="h-[1px] bg-gray-200 dark:bg-gray-800 mb-6" />
-
-                {todayPost && !canPostAgain ? (
-                    <View className={`p-6 rounded-3xl border items-center ${todayPost.status === 'rejected' ? 'bg-red-50 border-red-100 dark:bg-red-900/10 dark:border-red-900/30' : 'bg-blue-50 border-blue-100 dark:bg-blue-900/10 dark:border-blue-900/30'}`}>
-                        <View className={`w-16 h-16 rounded-full items-center justify-center mb-4 ${todayPost.status === 'rejected' ? 'bg-red-100 dark:bg-red-800/30' : 'bg-blue-100 dark:bg-blue-800/30'}`}>
-                            <Ionicons name={todayPost.status === 'rejected' ? "close-circle" : todayPost.status === 'pending' ? "time" : "checkmark-circle"} size={32} color={todayPost.status === 'rejected' ? "#ef4444" : "#3b82f6"} />
+                {/* --- POST LIMIT / STATUS VIEW --- */}
+                {postsLast24h >= maxPostsToday && !canPostAgain ? (
+                    <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="p-8 rounded-[40px] border items-center">
+                        <View className={`w-20 h-20 rounded-full items-center justify-center mb-6 ${todayPost?.status === 'rejected' ? 'bg-red-500/10' : 'bg-blue-500/10'}`}>
+                            <Ionicons name={todayPost?.status === 'rejected' ? "close-outline" : "time-outline"} size={40} color={todayPost?.status === 'rejected' ? THEME.red : THEME.accent} />
                         </View>
 
-                        <Text className="text-xl font-bold dark:text-white text-center">
-                            Daily Entry: {todayPost.status.charAt(0).toUpperCase() + todayPost.status.slice(1)}
+                        <Text className="text-2xl font-black uppercase italic text-white text-center">
+                            Entry: {todayPost?.status?.toUpperCase() || "LOCKED"}
                         </Text>
 
-                        <Text className="text-gray-600 dark:text-gray-400 text-center mt-2 leading-6">
-                            {todayPost.status === 'pending' && "Your post is currently being reviewed by our team."}
-                            {todayPost.status === 'approved' && `Your post is live! Next entry available in: ${timeLeft}`}
-                            {todayPost.status === 'rejected' && `Unfortunately, your post was not approved. Retry in: ${timeLeft}`}
+                        <Text className="text-gray-500 text-center mt-3 leading-5 font-medium">
+                            {todayPost?.status === 'pending' && "Your intel is currently being decrypted by our THE SYSTEM."}
+                            {todayPost?.status === 'approved' && "Daily transmission limit reached. Link available in:"}
+                            {todayPost?.status === 'rejected' && "Transmission failed. System cooldown active:"}
                         </Text>
 
-                        {(todayPost.status === 'rejected' || todayPost.status === 'approved') && (
+                        {(todayPost?.status === 'rejected' || todayPost?.status === 'approved') && (
                             <View className="items-center w-full">
-                                <View className="mt-4 flex-row items-center bg-white dark:bg-gray-800 px-4 py-2 rounded-full border border-gray-100 shadow-sm">
-                                    <Ionicons name="timer-outline" size={16} color={todayPost.status === 'rejected' ? "#ef4444" : "#3b82f6"} style={{ marginRight: 6 }} />
-                                    <Text className={`font-bold ${todayPost.status === 'rejected' ? 'text-red-600' : 'text-blue-600'}`}>{timeLeft}</Text>
+                                <View className="mt-6 flex-row items-center bg-black px-6 py-3 rounded-2xl border border-gray-800">
+                                    <Ionicons name="timer-outline" size={18} color={THEME.accent} style={{ marginRight: 8 }} />
+                                    <Text className="font-black text-xl text-blue-600">{timeLeft || "00:00"}</Text>
                                 </View>
 
                                 <TouchableOpacity
                                     onPress={() => isLoaded ? show() : load()}
-                                    className={`mt-6 flex-row items-center px-6 py-3 rounded-2xl shadow-sm ${isLoaded ? 'bg-orange-500' : 'bg-gray-400'}`}
+                                    className={`mt-8 w-full py-5 rounded-2xl flex-row justify-center items-center ${isLoaded ? 'bg-blue-600' : 'bg-gray-800'}`}
                                 >
-                                    {!isLoaded ? (
-                                        <>
-                                            <ActivityIndicator size="small" color="white" className="mr-2" />
-                                            <Text className="text-white font-bold text-base">Loading Ad...</Text>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Ionicons name="play-circle" size={20} color="white" />
-                                            <Text className="text-white font-bold ml-2 text-base">Post Again Now (Watch Ad)</Text>
-                                        </>
-                                    )}
+                                    {isLoaded ? <Ionicons name="play" size={20} color="white" /> : <ActivityIndicator size="small" color="#444" />}
+                                    <Text className="text-white font-black uppercase tracking-widest ml-2">Override Limit (Watch Ad)</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
 
-                        <TouchableOpacity
-                            onPress={() => router.push(todayPost.status === 'rejected' ? "screens/Rules" : "/")}
-                            className={`mt-4 bg-white dark:bg-gray-900 px-6 py-3 rounded-xl border ${todayPost.status === 'rejected' ? 'border-red-200' : 'border-blue-200'}`}
-                        >
-                            <Text className={todayPost.status === 'rejected' ? "text-red-600 font-bold" : "text-blue-600 font-bold"}>
-                                {todayPost.status === 'rejected' ? "View Posting Rules" : "Go to Feed"}
-                            </Text>
-                        </TouchableOpacity>
+                        <Link href={todayPost?.status === "rejected" ? "/screens/Rules" : "/"} asChild>
+                            <TouchableOpacity className="mt-4">
+                                <Text className="text-gray-600 font-bold uppercase tracking-tighter text-xs">
+                                    {todayPost?.status === "rejected" ? "View Archive Rules" : "Return to Uplink"}
+                                </Text>
+                            </TouchableOpacity>
+                        </Link>
                     </View>
                 ) : (
                     <View>
-                        {rewardToken && (
-                            <View className="mb-4 bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 flex-row items-center">
-                                <Ionicons name="gift" size={20} color="#f97316" />
-                                <Text className="text-orange-700 dark:text-orange-400 font-bold ml-2">Bonus Entry Unlocked! Enjoy your extra post.</Text>
+                        {/* --- RANK & STATS --- */}
+                        <View className="mb-8 flex-row justify-between items-center bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
+                            <View>
+                                <Text className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Active Rank</Text>
+                                <Text className="text-white font-black italic">{userRank.rankIcon} {userRank.rankTitle.toUpperCase()}</Text>
                             </View>
-                        )}
+                            <View className="items-end">
+                                <Text className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Daily Quota</Text>
+                                <Text className="text-blue-500 font-black">{postsLast24h} / {maxPostsToday}</Text>
+                            </View>
+                        </View>
 
-                        <View className="flex-row justify-between items-center mb-4">
-                            <Text className="text-xl font-semibold dark:text-gray-200">{showPreview ? "Previewing Entry" : "Create New Post"}</Text>
-                            <TouchableOpacity onPress={() => setShowPreview(!showPreview)} className="bg-blue-100 dark:bg-blue-900/30 px-4 py-2 rounded-full flex-row items-center">
-                                <Ionicons name={showPreview ? "create-outline" : "eye-outline"} size={16} color="#3b82f6" style={{ marginRight: 6 }} />
-                                <Text className="text-blue-600 dark:text-blue-400 text-xs font-bold">{showPreview ? "Edit Mode" : "Show Preview"}</Text>
+                        {/* --- FORM SECTION --- */}
+                        <View className="flex-row justify-between items-center mb-6">
+                            <Text className="text-lg font-black uppercase italic text-white">{showPreview ? "Intel Preview" : "Create New Intel"}</Text>
+                            <TouchableOpacity onPress={() => setShowPreview(!showPreview)} className="bg-blue-600/10 px-4 py-2 rounded-xl border border-blue-600/20">
+                                <Text className="text-blue-500 text-[10px] font-black uppercase">{showPreview ? "Edit Mode" : "Preview"}</Text>
                             </TouchableOpacity>
                         </View>
 
                         {showPreview ? (
-                            <View className="mb-6 bg-gray-50 dark:bg-gray-800 rounded-2xl p-2">{renderPreviewContent()}</View>
+                            <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="mb-6 rounded-3xl border-2 p-2">{renderPreviewContent()}</View>
                         ) : (
-                            <View className="space-y-5">
-                                <TextInput placeholder="Post Title" value={title} onChangeText={setTitle} placeholderTextColor="#9ca3af" className="w-full border border-gray-200 dark:border-gray-800 p-4 rounded-xl dark:text-white bg-gray-50 dark:bg-gray-900" />
-
+                            <View className="space-y-6">
+                                {/* Title */}
                                 <View>
-                                    <Text className="text-gray-500 dark:text-gray-400 text-xs mb-2">Formatting tools:</Text>
-                                    <View className="flex-row flex-wrap gap-2 mb-3">
-                                        {['section', 'heading', 'list', 'link'].map(t => (
-                                            <TouchableOpacity key={t} onPress={() => insertTag(t)} className="bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg border border-gray-200">
-                                                <Text className="text-blue-600 text-xs font-bold">[{t.toUpperCase()}]</Text>
-                                            </TouchableOpacity>
-                                        ))}
+                                    <Text className="text-[9px] font-black uppercase text-gray-500 mb-2 ml-1">Subject Title</Text>
+                                    <TextInput 
+                                        placeholder="ENTER POST TITLE..." 
+                                        value={title} 
+                                        onChangeText={setTitle} 
+                                        placeholderTextColor="#334155" 
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                                        className="w-full border-2 p-5 rounded-2xl text-white font-black text-lg" 
+                                    />
+                                </View>
+
+                                {/* Message */}
+                                <View>
+                                    <View className="flex-col gap-1 mb-2 mt-2 px-1">
+                                        <Text className="text-[13px] font-black uppercase text-gray-500">Content Module</Text>
+                                        <View className="flex-row gap-2">
+                                            {['section', 'heading', 'list', 'link'].map(t => (
+                                                <TouchableOpacity key={t} onPress={() => insertTag(t)}>
+                                                    <Text className="text-[11px] font-mono bg-blue-600/10 px-2 py-1 rounded text-blue-500 border border-blue-500/20">[{t.toUpperCase()}]</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
                                     </View>
                                     <TextInput
-                                        placeholder="Write your main message here..."
+                                        placeholder="Type your message here..."
                                         value={message}
                                         onChangeText={(text) => setMessage(sanitizeMessage(text))}
                                         onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
                                         multiline
-                                        className="border border-gray-200 dark:border-gray-800 p-4 rounded-xl dark:text-white bg-gray-50 dark:bg-gray-900 h-64"
-                                        style={{ textAlignVertical: 'top' }}
+                                        placeholderTextColor="#334155"
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border, textAlignVertical: 'top' }}
+                                        className="border-2 p-5 rounded-3xl text-white font-medium h-64"
                                     />
                                 </View>
 
-                                <View className="my-4">
-                                    <Text className="dark:text-white font-medium mb-2">Category</Text>
+                                {/* Category Selection */}
+                                <View>
+                                    <Text className="text-[9px] font-black uppercase text-gray-500 mb-2 ml-1">Archive Category</Text>
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                        {["News", "Memes", "Videos/Edits", "Polls", "Gaming", "Review"].map((cat) => (
-                                            <TouchableOpacity key={cat} onPress={() => setCategory(cat)} className={`mr-2 px-5 py-2 rounded-full border ${category === cat ? 'bg-blue-600 border-blue-600' : 'bg-transparent border-gray-300'}`}>
-                                                <Text className={category === cat ? "text-white font-bold" : "text-gray-600"}>{cat}</Text>
+                                        {["News", "Memes", "Polls", "Gaming", "Review"].map((cat) => (
+                                            <TouchableOpacity 
+                                                key={cat} 
+                                                onPress={() => setCategory(cat)} 
+                                                className={`mr-2 px-6 py-3 rounded-xl border ${category === cat ? 'bg-blue-600 border-blue-600' : 'bg-gray-900 border-gray-800'}`}
+                                            >
+                                                <Text className={`text-[10px] font-black uppercase ${category === cat ? "text-white" : "text-gray-500"}`}>{cat}</Text>
                                             </TouchableOpacity>
                                         ))}
                                     </ScrollView>
                                 </View>
 
-                                <View className="space-y-3">
-                                    <TextInput placeholder="TikTok / External URL (optional)" value={mediaUrlLink} onChangeText={setMediaUrlLink} placeholderTextColor="#9ca3af" className="border border-gray-200 dark:border-gray-800 p-4 rounded-xl dark:text-white bg-gray-50 dark:bg-gray-900" />
-                                    <TouchableOpacity disabled={pickedImage} onPress={pickImage} className="bg-blue-50 dark:bg-blue-900/10 p-5 rounded-xl items-center border-2 border-dashed border-blue-200">
-                                        {uploading ? <ActivityIndicator color="#3b82f6" /> : (
-                                            <View className="flex-row items-center">
-                                                <Ionicons name="cloud-upload-outline" size={20} color="#3b82f6" />
-                                                <Text className="text-blue-600 font-bold ml-2">{pickedImage ? "Media Uploaded" : "Attach Local File"}</Text>
+                                {/* Media & URL */}
+                                <View className="space-y-4">
+                                    <TextInput 
+                                        placeholder="External Uplink (URL)" 
+                                        value={mediaUrlLink} 
+                                        onChangeText={setMediaUrlLink} 
+                                        placeholderTextColor="#334155" 
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                                        className="border-2 p-5 rounded-2xl text-white font-bold" 
+                                    />
+                                    
+                                    <TouchableOpacity 
+                                        onPress={pickImage} 
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                                        className="p-8 rounded-3xl items-center border-2 border-dashed"
+                                    >
+                                        {uploading ? <ActivityIndicator color="#2563eb" /> : (
+                                            <View className="items-center">
+                                                <Ionicons name="cloud-upload-outline" size={24} color={pickedImage ? "#22c55e" : "#475569"} />
+                                                <Text className={`text-[10px] font-black uppercase mt-2 ${pickedImage ? 'text-green-500' : 'text-gray-500'}`}>
+                                                    {pickedImage ? "Asset Linked Successfully" : "Sync Local Media File"}
+                                                </Text>
                                             </View>
                                         )}
                                     </TouchableOpacity>
                                 </View>
 
-                                <View className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 mt-4">
+                                {/* Poll Module */}
+                                <View style={{ backgroundColor: THEME.card, borderColor: hasPoll ? THEME.accent : THEME.border }} className="p-6 rounded-3xl border-2 mt-4">
                                     <View className="flex-row justify-between items-center mb-4">
-                                        <Text className="dark:text-white font-bold text-lg">Add a poll</Text>
-                                        <Switch value={hasPoll} onValueChange={setHasPoll} trackColor={{ true: '#3b82f6' }} />
+                                        <Text className="text-white font-black uppercase tracking-widest text-[11px]">Deploy Poll Module</Text>
+                                        <Switch value={hasPoll} onValueChange={setHasPoll} trackColor={{ true: '#2563eb' }} thumbColor="white" />
                                     </View>
                                     {hasPoll && (
                                         <View className="space-y-3">
                                             {pollOptions.map((option, i) => (
-                                                <View key={i} className="flex-row items-center gap-2 mb-2">
-                                                    <TextInput placeholder={`Option ${i + 1}`} value={option} onChangeText={(t) => updatePollOption(t, i)} className="flex-1 bg-white dark:bg-gray-800 border border-gray-200 p-3 rounded-lg dark:text-white" />
-                                                    {pollOptions.length > 2 && <TouchableOpacity onPress={() => removePollOption(i)}><Ionicons name="trash-outline" size={20} color="#ef4444" /></TouchableOpacity>}
+                                                <View key={i} className="flex-row items-center gap-2 mb-1">
+                                                    <TextInput 
+                                                        placeholder={`Option ${i + 1}`} 
+                                                        value={option} 
+                                                        onChangeText={(t) => updatePollOption(t, i)} 
+                                                        style={{ backgroundColor: '#000', borderColor: THEME.border }}
+                                                        className="flex-1 border p-4 rounded-xl text-white font-bold" 
+                                                    />
+                                                    {pollOptions.length > 2 && <TouchableOpacity onPress={() => removePollOption(i)}><Ionicons name="close-circle" size={24} color={THEME.red} /></TouchableOpacity>}
                                                 </View>
                                             ))}
-                                            <TouchableOpacity onPress={addPollOption} className="bg-green-500/10 p-3 rounded-lg items-center"><Text className="text-green-600 font-bold">+ Add Option</Text></TouchableOpacity>
+                                            <TouchableOpacity onPress={addPollOption} className="bg-blue-600/10 p-4 rounded-xl items-center border border-dashed border-blue-600/30">
+                                                <Text className="text-blue-500 font-black text-[10px] uppercase">+ Add Response</Text>
+                                            </TouchableOpacity>
                                         </View>
                                     )}
                                 </View>
 
+                                {/* Final Submit */}
                                 <TouchableOpacity
                                     onPress={handleSubmit}
                                     disabled={submitting || uploading}
-                                    className={`bg-blue-600 p-5 rounded-2xl items-center mt-4 mb-10 shadow-lg ${submitting ? 'opacity-70' : ''}`}
+                                    className={`bg-blue-600 py-6 rounded-3xl items-center mt-6 mb-10 shadow-2xl ${submitting ? 'opacity-50' : ''}`}
                                 >
-                                    {submitting ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold text-lg">Submit Entry</Text>}
+                                    {submitting ? <ActivityIndicator color="white" /> : <Text className="text-white font-black italic uppercase tracking-[0.2em] text-lg">Transmit to Universe</Text>}
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -573,4 +735,5 @@ export default function AuthorDiaryDashboard() {
             </ScrollView>
         </View>
     );
+    
 }

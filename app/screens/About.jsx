@@ -1,90 +1,129 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { SafeAreaView, ScrollView, TouchableOpacity, View } from 'react-native';
+import { Dimensions, SafeAreaView, ScrollView, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../components/Text';
+
+const { width } = Dimensions.get('window');
+
+const THEME = {
+  bg: "#0a0a0a",
+  card: "#111111",
+  accent: "#2563eb",
+  border: "#1e293b",
+  glowBlue: "rgba(37, 99, 235, 0.08)",
+  glowIndigo: "rgba(79, 70, 229, 0.06)"
+};
 
 export default function AboutScreen() {
   const router = useRouter();
 
   const MissionCard = ({ icon, title, text }) => (
-    <View className="bg-gray-50 dark:bg-gray-900 p-5 rounded-3xl mb-4 border border-gray-100 dark:border-gray-800">
-      <View className="flex-row items-center mb-2">
-        <Ionicons name={icon} size={20} color="#3b82f6" />
-        <Text className="ml-2 font-bold dark:text-white">{title}</Text>
+    <View 
+      style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+      className="p-6 rounded-[32px] mb-4 border-2 shadow-sm"
+    >
+      <View className="flex-row items-center mb-3">
+        <View className="w-8 h-8 rounded-lg bg-blue-600/10 items-center justify-center border border-blue-600/20">
+            <Ionicons name={icon} size={18} color={THEME.accent} />
+        </View>
+        <Text className="ml-3 font-black uppercase italic text-white tracking-tight">{title}</Text>
       </View>
-      <Text className="text-gray-600 dark:text-gray-400 text-sm leading-5">
+      <Text className="text-gray-500 text-sm leading-6 font-medium">
         {text}
       </Text>
     </View>
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-gray-900">
-      <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingBottom: 50 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.bg }}>
+      {/* --- Ambient Background Glows --- */}
+      <View style={{ position: 'absolute', top: -100, left: -50, width: 350, height: 350, borderRadius: 175, backgroundColor: THEME.glowBlue }} />
+      <View style={{ position: 'absolute', bottom: 0, right: -100, width: 400, height: 400, borderRadius: 200, backgroundColor: THEME.glowIndigo }} />
+
+      <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingBottom: 60 }}>
         
-        {/* Header */}
-        <View className="flex-row items-center mt-8 mb-8">
-          <TouchableOpacity onPress={() => router.back()} className="p-2">
-            <Ionicons name="arrow-back" size={24} color="#3b82f6" />
+        {/* --- Header --- */}
+        <View className="flex-row items-center mt-8 mb-10">
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+            className="w-12 h-12 items-center justify-center rounded-2xl border-2"
+          >
+            <Ionicons name="chevron-back" size={24} color={THEME.accent} />
           </TouchableOpacity>
-          <Text className="text-2xl font-bold ml-2 dark:text-white">About Us</Text>
+          <View className="ml-5">
+            <Text className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">Information Protocol</Text>
+            <Text className="text-3xl font-black italic uppercase text-white">About Us</Text>
+          </View>
         </View>
 
-        {/* Hero Section */}
-        <View className="items-center mb-10">
-          <View className="w-20 h-20 bg-pink-100 dark:bg-pink-900/30 rounded-full items-center justify-center mb-4">
-             <Text className="text-4xl">🎌</Text>
+        {/* --- Hero Section --- */}
+        <View className="items-center mb-12">
+          <View 
+            style={{ borderColor: THEME.accent }}
+            className="w-24 h-24 bg-gray-900 rounded-[35px] items-center justify-center mb-6 border-2 shadow-2xl shadow-blue-500/20"
+          >
+             <Text className="text-5xl">🎌</Text>
           </View>
-          <Text className="text-3xl font-bold text-gray-900 dark:text-white text-center">
+          <Text className="text-4xl font-black italic uppercase text-white tracking-tighter">
             Oreblogda
           </Text>
-          <Text className="text-blue-600 dark:text-blue-400 font-medium text-center mt-1">
-            Your Chill Anime Corner
+          <View className="bg-blue-600/10 px-4 py-1 rounded-full border border-blue-600/20 mt-2">
+            <Text className="text-blue-500 font-black uppercase text-[10px] tracking-widest">
+                The Prime Anime Uplink
+            </Text>
+          </View>
+        </View>
+
+        {/* --- Introduction --- */}
+        <View className="mb-12 px-2">
+          <Text className="text-base text-gray-400 text-center leading-7 font-medium">
+            Accessing <Text className="font-black italic text-white uppercase">Oreblogda</Text> — 
+            your primary encrypted hub for everything anime, manga, and otaku culture. 
+            We are the signal in the static.
           </Text>
         </View>
 
-        {/* Introduction */}
-        <View className="mb-8">
-          <Text className="text-lg text-gray-700 dark:text-gray-300 text-center leading-7 px-2">
-            Welcome to <Text className="font-bold text-indigo-600 dark:text-indigo-400">Oreblogda</Text> — 
-            your hub for everything anime, manga, and otaku culture!
-          </Text>
-        </View>
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">Core Modules</Text>
 
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-4 ml-1">What we do</Text>
-
-        {/* Content Breakdown */}
+        {/* --- Content Breakdown --- */}
         <MissionCard 
           icon="flash-outline"
-          title="Stay Updated"
-          text="From the latest news and episode breakdowns to fun facts and underrated recommendations, we keep you updated on what’s hot."
+          title="Live Transmission"
+          text="From the latest global news and episode breakdowns to fun facts and underrated recommendations, we provide real-time updates."
         />
 
         <MissionCard 
-          icon="heart-outline"
-          title="Community First"
-          text="Whether you’re deep into shōnen battles, slice-of-life stories, or here for the memes — we’ve got you covered."
+          icon="people-outline"
+          title="Global Syndicate"
+          text="Whether you’re deep into shōnen battles, slice-of-life stories, or here for the memes — this is your designated sector."
         />
 
         <MissionCard 
-          icon="shield-checkmark-outline"
-          title="Our Mission"
-          text="We’re fans first — writers second. Our goal is to make anime news fun, honest, and worth your time."
+          icon="terminal-outline"
+          title="Fan-Driven Intelligence"
+          text="We’re fans first — writers second. Our directive is to make anime news fun, honest, and worth your processing power."
         />
 
-        {/* Fun Footer Sign-off */}
-        <View className="mt-10 p-8 rounded-[40px] bg-indigo-50 dark:bg-indigo-900/10 items-center">
-          <Text className="text-4xl mb-4">🍿</Text>
-          <Text className="text-indigo-900 dark:text-indigo-300 text-center font-bold text-lg mb-2">
-            Grab your snacks!
+        {/* --- Fun Footer Sign-off --- */}
+        <View 
+          style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+          className="mt-10 p-10 rounded-[45px] border-2 items-center"
+        >
+          <Text className="text-5xl mb-6">🍿</Text>
+          <Text className="text-white text-center font-black italic uppercase text-xl mb-3">
+            Snack-Time Protocol
           </Text>
-          <Text className="text-indigo-700/70 dark:text-indigo-400/70 text-center leading-5 text-sm">
-            Power up your Wi-Fi and join the community. Stay tuned, stay hyped, and never skip the opening song!
+          <Text className="text-gray-500 text-center leading-6 text-sm font-medium">
+            Power up your Wi-Fi and join the syndicate. Stay tuned, stay hyped, and <Text className="text-blue-500 font-black">NEVER SKIP THE OPENING SONG.</Text>
           </Text>
         </View>
 
-        <View className="items-center mt-12 mb-10">
-           <Text className="text-gray-400 text-xs">Built by Fans for Fans</Text>
+        <View className="items-center mt-16 mb-10">
+            <View className="h-[1px] w-12 bg-gray-800 mb-4" />
+            <Text className="text-gray-700 font-black uppercase text-[9px] tracking-[0.3em]">
+                Built by Fans // For Fans
+            </Text>
         </View>
 
       </ScrollView>

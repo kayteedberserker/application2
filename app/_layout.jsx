@@ -1,21 +1,24 @@
 import Constants from 'expo-constants';
 import { useFonts } from "expo-font";
 import * as Notifications from "expo-notifications";
-import { Stack, useRouter } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useColorScheme } from "nativewind";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, DeviceEventEmitter, Platform, Text as RNText, StatusBar, View } from "react-native";
+import { DeviceEventEmitter, Platform, StatusBar, View } from "react-native"; // Make sure to import BackHandler for production use
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from 'react-native-toast-message';
+import AnimeLoading from "../components/AnimeLoading";
+import { StreakProvider, useStreak } from "../context/StreakContext";
 import { UserProvider, useUser } from "../context/UserContext";
 import "./globals.css";
+// import { AdConfig } from '../utils/AdConfig';
 
 SplashScreen.preventAutoHideAsync();
 
 // --- AD CONFIGURATION ---
 const FIRST_AD_DELAY_MS = 60000; // 1 minute delay after app opens
-const COOLDOWN_MS = 90000; // 90 seconds between subsequent ads
+const COOLDOWN_MS = 120000; // 90 seconds between subsequent ads
 
 // We set the lastShownTime to "now minus (cooldown - first delay)" 
 // This trick makes the logic wait exactly 60 seconds before the first ad is eligible.
@@ -62,24 +65,17 @@ async function registerForPushNotificationsAsync() {
 }
 
 function RootLayoutContent() {
+    const { refreshStreak } = useStreak()
     const { colorScheme } = useColorScheme();
     const isDark = colorScheme === "dark";
     const router = useRouter();
+    const pathname = usePathname();
     const { user } = useUser();
     const [isSyncing, setIsSyncing] = useState(true);
-
+    // Trigger refreshStreak every time the route changes
     useEffect(() => {
-        const sub =
-            Notifications.addNotificationResponseReceivedListener(response => {
-                const data = response.notification.request.content.data;
-
-                if (data?.postId) {
-                    router.push(`/post/${data.postId}`);
-                }
-            });
-
-        return () => sub.remove();
-    }, []);
+        refreshStreak();
+    }, [pathname, refreshStreak]);
 
     const [fontsLoaded, fontError] = useFonts({
         "SpaceGrotesk": require("../assets/fonts/SpaceGrotesk.ttf"),
@@ -90,13 +86,12 @@ function RootLayoutContent() {
     // useEffect(() => {
     //     if (Platform.OS !== 'web') {
     //         try {
-    //             const { InterstitialAd, AdEventType, TestIds } = require('react-native-google-mobile-ads');
+    //             const { InterstitialAd, AdEventType } = require('react-native-google-mobile-ads');
     //             const mobileAds = require('react-native-google-mobile-ads').default;
 
     //             mobileAds().initialize().then(() => {
-    //                 interstitial = InterstitialAd.createForAdRequest(TestIds.INTERSTITIAL);
+    //                 interstitial = InterstitialAd.createForAdRequest(AdConfig.interstitial);
     //                 interstitial.load();
-
     //                 const adTriggerSub = DeviceEventEmitter.addListener("tryShowInterstitial", () => {
     //                     const now = Date.now();
     //                     // Only show if ad is loaded AND cooldown has passed
@@ -107,7 +102,6 @@ function RootLayoutContent() {
     //                     } else {
     //                     }
     //                 });
-
     //                 const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
     //                     DeviceEventEmitter.emit("tryShowInterstitial");
     //                     return false;
@@ -151,15 +145,42 @@ function RootLayoutContent() {
         performSync();
     }, [fontsLoaded, user?.deviceId]);
 
-    // 3. Notification Interaction
+    // 3. Notification Interaction (FIXED: Only runs when navigation context is available)
     useEffect(() => {
+        if (isSyncing) return;
+
         const responseSub = Notifications.addNotificationResponseReceivedListener(response => {
-            const data = response.notification.request.content.data;
-            if (data?.postId) router.push({ pathname: "/post/[id]", params: { id: data.postId } });
-            else if (data?.type === "open_diary") router.push("/authordiary");
+            // Deep extract the data
+            const content = response.notification.request.content;
+            const data = content.data;
+
+            console.log("🔔 Notification Data Payload:", JSON.stringify(data));
+
+            // Attempt to find postId in multiple common locations
+            const targetId = data?.postId || data?.body?.postId || data?.id;
+            const type = data?.type;
+
+            if (targetId) {
+                console.log("🚀 Navigating to Post ID:", targetId);
+                // Always give the full updated code/path
+                router.push({
+                    pathname: "/post/[id]",
+                    params: { id: targetId }
+                });
+            }
+            else if (type === "open_diary") {
+                console.log("📓 Navigating to Author Diary");
+                router.push("/authordiary");
+            }
+            else {
+                console.warn("⚠️ Notification tapped but no valid ID found in data:", data);
+                // Optional: fallback to home if data is missing
+                // router.push("/"); 
+            }
         });
+
         return () => responseSub.remove();
-    }, []);
+    }, [isSyncing]);
 
     // Splash Screen Control
     useEffect(() => {
@@ -170,16 +191,7 @@ function RootLayoutContent() {
 
     // --- LOADING VIEW ---
     if (!fontsLoaded || isSyncing) {
-        return (
-            <View className="flex-1 bg-white dark:bg-gray-900 justify-center items-center">
-                <ActivityIndicator size="large" color="#3b82f6" />
-                {fontsLoaded && (
-                    <RNText className="mt-4 text-gray-400 animate-pulse font-bold">
-                        Synchronizing account...
-                    </RNText>
-                )}
-            </View>
-        );
+        return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />
     }
 
     return (
@@ -209,7 +221,9 @@ export default function RootLayout() {
     return (
         <SafeAreaProvider>
             <UserProvider>
-                <RootLayoutContent />
+                <StreakProvider>
+                    <RootLayoutContent />
+                </StreakProvider>
             </UserProvider>
         </SafeAreaProvider>
     );

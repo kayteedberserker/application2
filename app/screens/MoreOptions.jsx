@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -14,6 +15,17 @@ import {
   View
 } from 'react-native';
 import { Text } from '../../components/Text';
+
+const { width } = Dimensions.get('window');
+
+const THEME = {
+  bg: "#0a0a0a",
+  card: "#111111",
+  accent: "#2563eb",
+  border: "#1e293b",
+  glowBlue: "rgba(37, 99, 235, 0.08)",
+  glowPurple: "rgba(139, 92, 246, 0.05)"
+};
 
 export default function MoreOptions() {
   const router = useRouter();
@@ -28,7 +40,7 @@ export default function MoreOptions() {
   const checkPermission = async () => {
     const { status } = await Notifications.getPermissionsAsync();
     setIsNotificationsEnabled(status === 'granted');
-    // Loading animation delay
+    // Loading animation per your requirement
     setTimeout(() => setLoading(false), 800);
   };
 
@@ -37,7 +49,6 @@ export default function MoreOptions() {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     
     if (existingStatus === 'denied' && !isNotificationsEnabled) {
-      // If denied, we must send them to settings
       Alert.alert(
         "Permissions Required",
         "Notifications are disabled in your system settings. Would you like to enable them now?",
@@ -54,11 +65,9 @@ export default function MoreOptions() {
     }
 
     if (!isNotificationsEnabled) {
-      // Try to request
       const { status } = await Notifications.requestPermissionsAsync();
       setIsNotificationsEnabled(status === 'granted');
     } else {
-      // Inform user they have to disable in settings (OS restriction)
       Alert.alert(
         "Disable Notifications",
         "To fully stop notifications, please disable them in your device system settings.",
@@ -71,120 +80,151 @@ export default function MoreOptions() {
     setLoading(false);
   };
 
-  const MenuRow = ({ title, icon, route, color = "#3b82f6" }) => (
+  const MenuRow = ({ title, icon, route, color = "#2563eb" }) => (
     <TouchableOpacity 
       onPress={() => router.push(route)}
-      activeOpacity={0.7}
-      className="flex-row items-center p-4 bg-white dark:bg-gray-900 mb-2 rounded-2xl border border-gray-100 dark:border-gray-800"
+      activeOpacity={0.8}
+      style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+      className="flex-row items-center p-5 mb-3 rounded-2xl border-2"
     >
-      <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: `${color}15` }}>
+      <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: `${color}15` }}>
         <Ionicons name={icon} size={20} color={color} />
       </View>
-      <Text className="flex-1 ml-4 text-base font-medium dark:text-white">{title}</Text>
-      <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+      <Text className="flex-1 ml-4 text-sm font-black uppercase italic text-white tracking-tight">{title}</Text>
+      <Ionicons name="chevron-forward" size={16} color={THEME.border} />
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50 dark:bg-gray-900">
-      <ScrollView className="flex-1 px-5">
+    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.bg }}>
+      {/* --- Ambient Background Glows --- */}
+      <View style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowBlue }} />
+      <View style={{ position: 'absolute', bottom: 100, left: -100, width: 400, height: 400, borderRadius: 200, backgroundColor: THEME.glowPurple }} />
+
+      <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
         
         {/* --- Header --- */}
-        <View className="flex-row items-center mt-8 mb-8">
+        <View className="flex-row items-center mt-8 mb-10">
           <TouchableOpacity 
             onPress={() => router.back()} 
-            className="w-10 h-10 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800"
+            style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+            className="w-12 h-12 items-center justify-center rounded-2xl border-2"
           >
-            <Ionicons name="arrow-back" size={22} color="#3b82f6" />
+            <Ionicons name="chevron-back" size={24} color={THEME.accent} />
           </TouchableOpacity>
-          <Text className="text-2xl font-bold ml-4 dark:text-white">Directory</Text>
+          <View className="ml-5">
+            <Text className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">System Core</Text>
+            <Text className="text-3xl font-black italic uppercase text-white">Directory</Text>
+          </View>
         </View>
 
         {/* --- Section: Settings --- */}
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-3 ml-1">
-          App Settings
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">
+          Internal Configuration
         </Text>
-        <View className="flex-row items-center p-4 bg-white dark:bg-gray-900 mb-2 rounded-2xl border border-gray-100 dark:border-gray-800">
-          <View className="w-10 h-10 rounded-full items-center justify-center bg-blue-50 dark:bg-blue-900/20">
-            <Ionicons name="notifications" size={20} color="#3b82f6" />
+        <View 
+            style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+            className="flex-row items-center p-5 mb-8 rounded-2xl border-2"
+        >
+          <View className="w-10 h-10 rounded-xl items-center justify-center bg-blue-500/10">
+            <Ionicons name="notifications-outline" size={20} color={THEME.accent} />
           </View>
           <View className="flex-1 ml-4">
-            <Text className="text-base font-medium dark:text-white">Push Notifications</Text>
-            <Text className="text-xs text-gray-400">{isNotificationsEnabled ? "Enabled" : "Disabled"}</Text>
+            <Text className="text-sm font-black italic uppercase text-white">Push Notifications</Text>
+            <Text className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">
+                Status: {isNotificationsEnabled ? "Active Uplink" : "Signal Blocked"}
+            </Text>
           </View>
           {loading ? (
-            <ActivityIndicator size="small" color="#3b82f6" />
+            <ActivityIndicator size="small" color={THEME.accent} />
           ) : (
             <Switch
-              trackColor={{ false: "#d1d5db", true: "#3b82f6" }}
-              thumbColor={Platform.OS === 'ios' ? "#fff" : isNotificationsEnabled ? "#fff" : "#f4f3f4"}
+              trackColor={{ false: "#1e293b", true: THEME.accent }}
+              thumbColor={"#fff"}
               onValueChange={toggleNotifications}
               value={isNotificationsEnabled}
             />
           )}
         </View>
 
-        <View className="h-4" />
-
-        {/* --- Section 1: Help & Posting --- */}
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-3 ml-1">
-          Writing Guidelines
+        {/* --- Section: Progression (NEW) --- */}
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">
+          Author Progression
         </Text>
         <MenuRow 
-            title="How to Post & Formatting" 
-            icon="book-outline" 
+            title="Rank & Streak System" 
+            icon="flash-outline" 
+            route="/screens/RankSystemScreen" 
+            color="#f97316" 
+        />
+
+        <View className="h-6" />
+
+        {/* --- Section 1: Writing Guidelines --- */}
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">
+          Knowledge Base
+        </Text>
+        <MenuRow 
+            title="Formatting Protocols" 
+            icon="code-working" 
             route="/screens/Instructions" 
             color="#3b82f6" 
         />
         <MenuRow 
-            title="Approval & Rejection Rules" 
+            title="Validation Rules" 
             icon="shield-checkmark-outline" 
             route="/screens/Rules" 
             color="#10b981" 
         />
 
-        <View className="h-4" />
+        <View className="h-6" />
 
-        {/* --- Section 2: Support & Company --- */}
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-3 ml-1">
-          Support & About
+        {/* --- Section 2: Support --- */}
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">
+          Communication Links
         </Text>
         <MenuRow 
-            title="About the Platform" 
-            icon="information-circle-outline" 
+            title="Platform Intelligence" 
+            icon="bulb-outline" 
             route="/screens/About" 
             color="#8b5cf6" 
         />
         <MenuRow 
-            title="Contact Support" 
-            icon="mail-outline" 
+            title="Technical Support" 
+            icon="terminal-outline" 
             route="/screens/Contact" 
             color="#f59e0b" 
         />
 
-        <View className="h-4" />
+        <View className="h-6" />
 
         {/* --- Section 3: Legal --- */}
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-3 ml-1">
-          Legal
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">
+          Encryption & Legal
         </Text>
         <MenuRow 
             title="Terms of Service" 
-            icon="document-text-outline" 
+            icon="document-attach-outline" 
             route="/screens/Terms" 
             color="#64748b" 
         />
         <MenuRow 
-            title="Privacy Policy" 
-            icon="lock-closed-outline" 
+            title="Privacy Protocols" 
+            icon="finger-print-outline" 
             route="/screens/Policy" 
             color="#64748b" 
         />
 
         {/* --- Footer Info --- */}
-        <View className="items-center mt-12 mb-10">
-          <Text className="text-gray-400 text-xs">Diary Dashboard Version 1.0.5</Text>
-          <Text className="text-gray-300 dark:text-gray-700 text-[10px] mt-1">Made with ❤️ for Authors</Text>
+        <View className="items-center mt-16 mb-12">
+          <View className="bg-gray-900 px-4 py-2 rounded-full border border-gray-800 mb-2">
+            <Text className="text-gray-500 font-mono text-[9px] uppercase tracking-widest">
+                Firmware: v1.0.5-STABLE
+            </Text>
+          </View>
+          <Text className="text-gray-700 text-[10px] font-black uppercase italic tracking-tighter">
+            Terminal optimized for Author use
+          </Text>
         </View>
 
       </ScrollView>

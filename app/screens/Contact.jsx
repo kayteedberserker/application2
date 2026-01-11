@@ -2,8 +2,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { Text } from '../../components/Text';
+
+const { width } = Dimensions.get('window');
+
+const THEME = {
+  bg: "#0a0a0a",
+  card: "#111111",
+  accent: "#2563eb",
+  border: "#1e293b",
+  glowBlue: "rgba(37, 99, 235, 0.08)",
+  glowRed: "rgba(239, 68, 68, 0.03)"
+};
 
 export default function Contact() {
   const router = useRouter();
@@ -43,97 +64,115 @@ export default function Contact() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-gray-900">
+    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.bg }}>
+      {/* --- Ambient Background Glows --- */}
+      <View style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowBlue }} />
+      <View style={{ position: 'absolute', bottom: 100, left: -100, width: 350, height: 350, borderRadius: 175, backgroundColor: THEME.glowRed }} />
+
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"} 
         className="flex-1"
       >
-        <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
+        <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
           
-          {/* Header */}
-          <View className="flex-row items-center mt-8 mb-6">
-            <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2">
-              <Ionicons name="arrow-back" size={24} color="#3b82f6" />
+          {/* --- Header --- */}
+          <View className="flex-row items-center mt-8 mb-8">
+            <TouchableOpacity 
+              onPress={() => router.back()} 
+              style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+              className="w-12 h-12 items-center justify-center rounded-2xl border-2"
+            >
+              <Ionicons name="chevron-back" size={24} color={THEME.accent} />
             </TouchableOpacity>
-            <Text className="text-2xl font-bold ml-2 dark:text-white">Contact Us</Text>
+            <View className="ml-5">
+              <Text className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">Comms Channel</Text>
+              <Text className="text-3xl font-black italic uppercase text-white">Contact Us</Text>
+            </View>
           </View>
 
-          <Text className="text-gray-600 dark:text-gray-400 mb-8 leading-6">
-            Have a bug to report or a suggestion for the community? Drop us a message and our team will get back to you.
+          <Text className="text-gray-500 font-medium mb-10 leading-6 px-1">
+            Have a bug to report or a suggestion for the community? Initiate an uplink and our THE SYSTEM will decrypt your message.
           </Text>
 
-          {/* Form Fields */}
-          <View className="space-y-5">
+          {/* --- Form Fields --- */}
+          <View className="space-y-6">
             
             {/* Name Input */}
             <View>
-              <Text className="text-gray-500 font-bold uppercase text-[11px] tracking-widest mb-2 ml-1">Your Name</Text>
+              <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-2 ml-1">Identity Tag</Text>
               <TextInput
                 value={form.name}
                 onChangeText={(v) => handleChange("name", v)}
-                placeholder="Enter your name"
-                placeholderTextColor="#9ca3af"
-                className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 text-gray-900 dark:text-white"
+                placeholder="ENTER YOUR NAME..."
+                placeholderTextColor="#334155"
+                style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                className="border-2 p-5 rounded-2xl text-white font-black italic uppercase"
               />
             </View>
 
             {/* Email Input */}
-            <View className="mt-4">
-              <Text className="text-gray-500 font-bold uppercase text-[11px] tracking-widest mb-2 ml-1">Email Address</Text>
+            <View className="mt-6">
+              <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-2 ml-1">Digital Address</Text>
               <TextInput
                 value={form.email}
                 onChangeText={(v) => handleChange("email", v)}
-                placeholder="you@example.com"
-                placeholderTextColor="#9ca3af"
+                placeholder="YOU@EXAMPLE.COM"
+                placeholderTextColor="#334155"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 text-gray-900 dark:text-white"
+                style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                className="border-2 p-5 rounded-2xl text-white font-black italic uppercase"
               />
             </View>
 
             {/* Category Picker */}
-            <View className="mt-4">
-              <Text className="text-gray-500 font-bold uppercase text-[11px] tracking-widest mb-2 ml-1">Topic</Text>
-              <View className="bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <View className="mt-6">
+              <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-2 ml-1">Subject Priority</Text>
+              <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="rounded-2xl border-2 overflow-hidden">
                 <Picker
                   selectedValue={form.type}
                   onValueChange={(v) => handleChange("type", v)}
-                  dropdownIconColor="#3b82f6"
-                  style={{ color: Platform.OS === 'ios' ? undefined : '#9ca3af' }}
+                  dropdownIconColor={THEME.accent}
+                  style={{ color: '#fff' }}
+                  itemStyle={{ fontSize: 14, color: '#fff' }}
                 >
                   <Picker.Item label="General Inquiry" value="General" />
                   <Picker.Item label="Community Join Request" value="Community" />
                   <Picker.Item label="Bug Report" value="Bug" />
                   <Picker.Item label="Suggestion" value="Suggestion" />
+                  <Picker.Item label="Request Account Removal" value="Account Removal" />
                 </Picker>
               </View>
             </View>
 
             {/* Message Input */}
-            <View className="mt-4">
-              <Text className="text-gray-500 font-bold uppercase text-[11px] tracking-widest mb-2 ml-1">Your Message</Text>
+            <View className="mt-6">
+              <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-2 ml-1">Data Payload</Text>
               <TextInput
                 value={form.message}
                 onChangeText={(v) => handleChange("message", v)}
-                placeholder="Tell us what's on your mind..."
-                placeholderTextColor="#9ca3af"
+                placeholder="TYPE YOUR MESSAGE HERE..."
+                placeholderTextColor="#334155"
                 multiline
                 numberOfLines={6}
                 textAlignVertical="top"
-                className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 text-gray-900 dark:text-white min-h-[120px]"
+                style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                className="p-5 rounded-3xl text-white font-medium border-2 min-h-[160px]"
               />
             </View>
 
             {/* Feedback Messages */}
             {status.success ? (
-              <View className="bg-green-50 dark:bg-green-900/10 p-4 rounded-2xl border border-green-100 dark:border-green-900/20 mt-2">
-                <Text className="text-green-600 text-center font-medium">{status.success}</Text>
+              <View className="bg-green-500/10 p-5 rounded-2xl border border-green-500/20 mt-4 flex-row items-center">
+                <Ionicons name="checkmark-circle" size={20} color="#22c55e" />
+                <Text className="text-green-500 font-black uppercase text-[10px] ml-2 tracking-tight">{status.success}</Text>
               </View>
             ) : null}
 
             {status.error ? (
-              <View className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 dark:border-red-900/20 mt-2">
-                <Text className="text-red-600 text-center font-medium">{status.error}</Text>
+              <View className="bg-red-500/10 p-5 rounded-2xl border border-red-500/20 mt-4 flex-row items-center">
+                <Ionicons name="alert-circle" size={20} color="#ef4444" />
+                <Text className="text-red-500 font-black uppercase text-[10px] ml-2 tracking-tight">{status.error}</Text>
               </View>
             ) : null}
 
@@ -142,21 +181,23 @@ export default function Contact() {
               disabled={status.loading}
               onPress={handleSubmit}
               activeOpacity={0.8}
-              className={`mt-6 py-4 rounded-2xl flex-row justify-center items-center shadow-sm ${status.loading ? 'bg-blue-400' : 'bg-blue-600'}`}
+              className={`mt-8 py-6 rounded-[24px] flex-row justify-center items-center shadow-2xl ${status.loading ? 'bg-blue-800 opacity-50' : 'bg-blue-600'}`}
             >
               {status.loading ? (
                 <ActivityIndicator color="white" size="small" className="mr-2" />
               ) : (
-                <Ionicons name="send" size={18} color="white" style={{ marginRight: 8 }} />
+                <Ionicons name="flash" size={18} color="white" style={{ marginRight: 10 }} />
               )}
-              <Text className="text-white font-bold text-lg">
-                {status.loading ? "Sending..." : "Send Message"}
+              <Text className="text-white font-black italic uppercase tracking-[0.2em] text-lg">
+                {status.loading ? "Transmitting..." : "Initiate Uplink"}
               </Text>
             </TouchableOpacity>
 
           </View>
 
-          <View className="h-20" />
+          <View className="h-24 items-center justify-center">
+              <Text className="text-gray-800 font-black text-[8px] uppercase tracking-[0.4em]">Secure Transmission Channel v1.2</Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

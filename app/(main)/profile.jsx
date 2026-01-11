@@ -1,37 +1,88 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Animated,
+    Dimensions,
+    Easing,
     FlatList,
     Image,
     Platform,
     Pressable,
-    Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useSWRInfinite from "swr/infinite";
+import AnimeLoading from "../../components/AnimeLoading";
+import AppOnboarding from "../../components/AppOnboarding";
+import { SyncLoading } from "../../components/SyncLoading";
+import { Text } from "../../components/Text";
 import { useUser } from "../../context/UserContext";
 
+const { width } = Dimensions.get("window");
 const API_BASE = "https://oreblogda.com/api";
 const LIMIT = 5;
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
 export default function MobileProfilePage() {
-    const { user, setUser } = useUser();
+    const { user, setUser, contextLoading } = useUser();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
 
     const [description, setDescription] = useState("");
     const [preview, setPreview] = useState(null);
     const [imageFile, setImageFile] = useState(null);
     const [isUpdating, setIsUpdating] = useState(false);
+    const [totalPosts, setTotalPosts] = useState(0); // For ranking logic
 
-    // 🔹 1. Sync User Data from DB
+    // Animations
+    const scanAnim = useRef(new Animated.Value(0)).current;
+    const loadingAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.loop(
+            Animated.timing(scanAnim, {
+                toValue: 1,
+                duration: 10000,
+                easing: Easing.linear,
+                useNativeDriver: true,
+            })
+        ).start();
+    }, []);
+
+    useEffect(() => {
+        if (isUpdating) {
+            Animated.loop(
+                Animated.timing(loadingAnim, {
+                    toValue: 1,
+                    duration: 1500,
+                    easing: Easing.linear,
+                    useNativeDriver: true,
+                })
+            ).start();
+        } else {
+            loadingAnim.stopAnimation();
+            loadingAnim.setValue(0);
+        }
+    }, [isUpdating]);
+
+    const spin = scanAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0deg', '360deg'],
+    });
+
+    const translateX = loadingAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-width, width],
+    });
+
+    // 🔹 1. Sync User & Lifetime Post Count for Ranking
     useEffect(() => {
         const syncUserWithDB = async () => {
             if (!user?.deviceId) return;
@@ -41,6 +92,13 @@ export default function MobileProfilePage() {
                 if (res.ok) {
                     setUser(dbUser);
                     setDescription(dbUser.description || "");
+                    
+                    // Fetch total count for ranking
+                    const postRes = await fetch(`${API_BASE}/posts?author=${dbUser._id}&limit=1`);
+                    const postData = await postRes.json();
+                    if (postRes.ok) {
+                        setTotalPosts(postData.total || 0);
+                    }
                 }
             } catch (err) {
                 console.error("Sync User Error:", err);
@@ -49,28 +107,33 @@ export default function MobileProfilePage() {
         syncUserWithDB();
     }, [user?.deviceId]);
 
-    // 🔹 2. SWR Infinite with live settings
+    // 🔹 2. SWR Infinite
     const getKey = (pageIndex, previousPageData) => {
-        if (!user?._id) return null; // Wait for synced ID
-        if (previousPageData && previousPageData.posts.length < LIMIT) return null; // End of data
+        if (!user?._id) return null;
+        if (previousPageData && previousPageData.posts.length < LIMIT) return null;
         return `${API_BASE}/posts?author=${user._id}&page=${pageIndex + 1}&limit=${LIMIT}`;
     };
 
     const { data, size, setSize, isLoading, isValidating, mutate } = useSWRInfinite(getKey, fetcher, {
-        refreshInterval: 10000,   // Live updates every 10s
-        revalidateOnFocus: true,  // Refresh when app is opened
-        dedupingInterval: 5000,   // Prevent double-calls
+        refreshInterval: 10000,
+        revalidateOnFocus: true,
+        dedupingInterval: 5000,
     });
 
     const posts = useMemo(() => {
         return data ? data.flatMap((page) => page.posts || []) : [];
     }, [data]);
 
-    // 🔹 Advanced Loading Logic
-    const isLoadingInitialData = isLoading && !data; 
+    const isLoadingInitialData = isLoading && !data;
     const isReachingEnd = data && data[data.length - 1]?.posts.length < LIMIT;
-    // Only show footer spinner if we are explicitly loading a NEW page (size increased)
     const isFetchingNextPage = isValidating && data && typeof data[size - 1] === "undefined";
+
+    // 🔹 Ranking Logic
+    const count = totalPosts;
+    const rankTitle = count > 200 ? "Master_Writer" : count > 150 ? "Elite_Writer" : count > 100 ? "Senior_Writer" : count > 50 ? "Novice_Writer" : count > 25 ? "Senior_Researcher" : "Novice_Researcher";
+    const rankIcon = count > 200 ? "👑" : count > 150 ? "💎" : count > 100 ? "🔥" : count > 50 ? "⚔️" : count > 25 ? "📜" : "🛡️";
+    const nextMilestone = count > 200 ? 500 : count > 150 ? 200 : count > 100 ? 150 : count > 50 ? 100 : count > 25 ? 50 : 25;
+    const progress = Math.min((count / nextMilestone) * 100, 100);
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -118,17 +181,17 @@ export default function MobileProfilePage() {
                 setUser(result.user);
                 setPreview(null);
                 setImageFile(null);
-                Alert.alert("Success", "Profile updated successfully!");
+                Alert.alert("Success", "Character Data Updated.");
             }
         } catch (err) {
-            Alert.alert("Error", "Failed to update profile.");
+            Alert.alert("Error", "Failed to sync changes.");
         } finally {
             setIsUpdating(false);
         }
     };
 
     const handleDelete = (postId) => {
-        Alert.alert("Confirm", "Delete this post?", [
+        Alert.alert("Confirm Deletion", "Erase this transmission log?", [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Delete",
@@ -140,7 +203,8 @@ export default function MobileProfilePage() {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ postId, fingerprint: user?.deviceId }),
                         });
-                        mutate(); // Instant refresh
+                        mutate();
+                        setTotalPosts(prev => prev - 1);
                     } catch (err) {
                         Alert.alert("Error", "Failed to delete.");
                     }
@@ -151,95 +215,175 @@ export default function MobileProfilePage() {
 
     const listHeader = useMemo(() => (
         <View className="px-6">
-            <Text className="text-2xl font-semibold dark:text-white">Edit Profile</Text>
-            <View className="items-center justify-center my-8">
-                <TouchableOpacity onPress={pickImage} className="relative">
-                    <Image
-                        source={{ uri: preview || user?.profilePic?.url || "https://via.placeholder.com/150" }}
-                        style={{ width: 112, height: 112, borderRadius: 56 }}
-                        className="border-2 border-blue-600 bg-gray-200"
-                    />
-                    <View className="absolute bottom-0 right-0 bg-blue-600 p-2 rounded-full">
-                        <Ionicons name="camera" size={20} color="white" />
-                    </View>
-                </TouchableOpacity>
+            <View className="flex-row items-center gap-4 mb-10 border-b border-gray-100 dark:border-gray-800 pb-6">
+                <View className="w-2 h-8 bg-blue-600" />
+                <Text className="text-3xl font-black italic tracking-tighter uppercase dark:text-white">Player Profile</Text>
             </View>
-            <TextInput
-                value={user?.username || "Guest Author"}
-                editable={false}
-                className="border p-3 rounded bg-gray-200 mb-4 text-gray-600"
-            />
-            <TextInput
-                multiline
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Write a description..."
-                className="border p-3 rounded h-28 bg-white mb-4"
-                style={{ textAlignVertical: 'top' }}
-            />
-            <TouchableOpacity
-                onPress={handleUpdate}
-                disabled={isUpdating}
-                className="bg-blue-600 p-4 rounded-lg w-full items-center"
-            >
-                {isUpdating ? <ActivityIndicator color="white" /> : <Text className="text-white font-bold text-lg">Save Changes</Text>}
-            </TouchableOpacity>
-            <Text className="text-xl font-semibold mb-4 dark:text-white mt-10">Ore Posts</Text>
-        </View>
-    ), [user, preview, description, isUpdating]);
 
-    return (
-            <FlatList
-            data={posts}
-            keyExtractor={(item) => item._id}
-            ListHeaderComponent={listHeader}
-            className="bg-white dark:bg-gray-900"
-            onEndReached={() => {
-                if (!isReachingEnd && !isValidating) {
-                    setSize(size + 1);
-                }
-            }}
-            onEndReachedThreshold={0.5}
-            renderItem={({ item }) => (
-                <View className="px-6 mb-10">
-                    <View className="mx-6 border border-gray-200 p-4 max-w-[80%] rounded-xl flex-row justify-between items-center bg-gray-50 dark:bg-gray-800">
-                        <Pressable onPress={() => router.push(`/post/${item.slug || item._id}`)} className="flex-1 mr-4">
-                            <Text className="font-medium text-lg dark:text-white" numberOfLines={1}>
-                                {item.title || item.message}
-                            </Text>
-                            <Text className="text-gray-500 text-xs mt-1">
-                                {new Date(item.createdAt).toLocaleDateString()}
-                            </Text>
-                            <View className="flex-row items-center gap-4 mt-2">
-                                <View className="flex-row items-center gap-1">
-                                    <Ionicons name="heart-outline" size={14} color="#9ca3af" />
-                                    <Text className="text-gray-500 text-xs">{item.likes?.length || 0}</Text>
-                                </View>
-                                <View className="flex-row items-center gap-1">
-                                    <Ionicons name="chatbubble-outline" size={14} color="#9ca3af" />
-                                    <Text className="text-gray-500 text-xs">{item.comments?.length || 0}</Text>
-                                </View>
-                                <View className="flex-row items-center gap-1">
-                                    <Ionicons name="eye-outline" size={14} color="#9ca3af" />
-                                    <Text className="text-gray-500 text-xs">{item.views || 0}</Text>
-                                </View>
-                            </View>
-                        </Pressable>
-                        <TouchableOpacity onPress={() => handleDelete(item._id)}>
-                            <Text className="text-red-500 font-bold">Delete</Text>
-                        </TouchableOpacity>
+            {/* AVATAR SECTION */}
+            <View className="items-center mb-10">
+                <View className="relative">
+                    <Animated.View 
+                        style={{ transform: [{ rotate: spin }] }}
+                        className="absolute -inset-4 border border-dashed border-blue-600/30 rounded-full" 
+                    />
+                    <View className="absolute -inset-1 border-2 border-blue-600 rounded-full opacity-50" />
+                    
+                    <TouchableOpacity onPress={pickImage} className="w-40 h-40 rounded-full overflow-hidden border-4 border-white dark:border-[#0a0a0a] bg-gray-900 shadow-2xl">
+                        <Image
+                            source={{ uri: preview || user?.profilePic?.url || "https://via.placeholder.com/150" }}
+                            className="w-full h-full object-cover"
+                        />
+                        <View className="absolute inset-0 bg-black/40 items-center justify-center">
+                            <Text className="text-[10px] font-black uppercase tracking-widest text-white">Change DNA</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+
+                <View className="mt-6 items-center">
+                    <Text className="text-xl font-black uppercase tracking-tighter text-blue-600">{user?.username || "GUEST"}</Text>
+                    <Text className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em] mt-1">Class: {rankTitle}</Text>
+                </View>
+
+                {/* RANKING PROGRESS BAR */}
+                <View className="mt-8 w-full px-4">
+                    <View className="flex-row justify-between items-end mb-2">
+                        <View className="flex-row items-center gap-2">
+                            <Text className="text-xl">{rankIcon}</Text>
+                            <Text className="text-[10px] font-black uppercase tracking-widest dark:text-white">{rankTitle}</Text>
+                        </View>
+                        <Text className="text-[10px] font-mono font-bold text-gray-500">
+                            EXP: {count} / {count > 200 ? "MAX" : nextMilestone}
+                        </Text>
+                    </View>
+                    <View className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-200 dark:border-white/10">
+                        <View 
+                            style={{ width: `${progress}%` }}
+                            className="h-full bg-blue-600 shadow-lg"
+                        />
                     </View>
                 </View>
-            )}
-            ListEmptyComponent={() => {
-                // Shows spinner only on very first empty load
-                if (isLoadingInitialData) return <ActivityIndicator className="py-10" color="#2563eb" />;
-                return <Text className="text-center text-gray-400 py-10">You haven't posted yet.</Text>;
-            }}
-            ListFooterComponent={() => {
-                // Footer spinner ONLY shows when user triggers "load more", not on background syncs
-                return isFetchingNextPage ? <ActivityIndicator className="py-4" color="#2563eb" /> : null;
-            }}
-        />
+            </View>
+
+            {/* HUD INPUTS */}
+            <View className="space-y-6">
+                <View className="space-y-1">
+                    <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Account ID</Text>
+                    <View className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 rounded-2xl">
+                        <Text className="text-sm font-bold text-gray-500">{user?.username || "UNSET"}</Text>
+                    </View>
+                </View>
+
+                <View className="space-y-1 mt-4">
+                    <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Neural Uplink - <Text className="text-[9px] font-black tracking-widest text-gray-400">Used for account recovery/removal</Text></Text>
+                    <View className="bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 rounded-2xl">
+                        <Text className="text-sm font-bold text-gray-500">{user?.deviceId || "SEARCHING..."}</Text>
+                    </View>
+                </View>
+
+                <View className="space-y-1 mt-4">
+                    <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Biography / Lore</Text>
+                    <TextInput
+                        multiline
+                        value={description}
+                        onChangeText={setDescription}
+                        placeholder="Write your player bio here..."
+                        placeholderTextColor="#4b5563"
+                        className="w-full bg-white dark:bg-black/40 border-2 border-gray-100 dark:border-gray-800 rounded-2xl p-4 text-sm font-medium dark:text-white min-h-[120px]"
+                        style={{ textAlignVertical: 'top' }}
+                    />
+                </View>
+
+                <TouchableOpacity
+                    onPress={handleUpdate}
+                    disabled={isUpdating}
+                    className="relative w-full h-14 bg-blue-600 rounded-2xl overflow-hidden items-center justify-center mt-6"
+                >
+                    <Text className="relative z-10 text-white font-black uppercase italic tracking-widest text-xs">
+                        {isUpdating ? "Syncing Changes..." : "Update Character Data"}
+                    </Text>
+                    {isUpdating && (
+                        <Animated.View 
+                            className="absolute bottom-0 h-1 bg-white/40 w-full"
+                            style={{ transform: [{ translateX }] }}
+                        />
+                    )}
+                </TouchableOpacity>
+            </View>
+
+            <View className="flex-row items-center gap-4 mt-16 mb-8">
+                <Text className="text-xl font-black uppercase tracking-tighter italic dark:text-white">Transmission Logs</Text>
+                <View className="h-[1px] flex-1 bg-gray-100 dark:bg-gray-800" />
+            </View>
+        </View>
+    ), [user, preview, description, isUpdating, spin, translateX, totalPosts]);
+
+    if (contextLoading) {
+        return <AnimeLoading message="Syncing Profile" subMessage="Please wait..." />;
+    }
+
+    return (
+        <View className="flex-1 bg-white dark:bg-[#0a0a0a]" style={{ paddingTop: insets.top }}>
+			<AppOnboarding />
+            {/* Ambient background deco */}
+            <View className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full" pointerEvents="none" />
+            <View className="absolute bottom-0 left-0 w-60 h-60 bg-purple-600/5 rounded-full" pointerEvents="none" />
+
+            <FlatList
+                data={posts}
+                keyExtractor={(item) => item._id}
+                ListHeaderComponent={listHeader}
+                onEndReached={() => {
+                    if (!isReachingEnd && !isValidating) {
+                        setSize(size + 1);
+                    }
+                }}
+                onEndReachedThreshold={0.5}
+                renderItem={({ item }) => (
+                    <View className="px-6 mb-4">
+                        <View className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-5 rounded-2xl flex-row justify-between items-center">
+                            <Pressable onPress={() => router.push(`/post/${item.slug || item._id}`)} className="flex-1 pr-4">
+                                <Text className="font-black text-sm uppercase tracking-tight text-gray-800 dark:text-gray-200" numberOfLines={1}>
+                                    {item.title || item.message}
+                                </Text>
+                                <Text className="text-[9px] font-bold text-blue-600 uppercase tracking-widest mt-1">
+                                    {new Date(item.createdAt).toLocaleDateString()}
+                                </Text>
+                                <View className="flex-row items-center gap-4 mt-2">
+                                    <View className="flex-row items-center gap-1">
+                                        <Ionicons name="heart-outline" size={12} color="#9ca3af" />
+                                        <Text className="text-gray-500 text-[10px] font-bold">{item.likes?.length || 0}</Text>
+                                    </View>
+                                    <View className="flex-row items-center gap-1">
+                                        <Ionicons name="chatbubble-outline" size={12} color="#9ca3af" />
+                                        <Text className="text-gray-500 text-[10px] font-bold">{item.comments?.length || 0}</Text>
+                                    </View>
+                                    <View className="flex-row items-center gap-1">
+                                        <Ionicons name="eye-outline" size={12} color="#9ca3af" />
+                                        <Text className="text-gray-500 text-[10px] font-bold">{item.views || 0}</Text>
+                                    </View>
+                                </View>
+                            </Pressable>
+                            <TouchableOpacity onPress={() => handleDelete(item._id)} className="p-3 bg-red-500/10 rounded-xl">
+                                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+                ListEmptyComponent={() => {
+                    if (isLoadingInitialData) return <SyncLoading />;
+                    return (
+                        <View className="mx-6 p-12 bg-gray-50 dark:bg-gray-900/50 rounded-3xl border-2 border-dashed border-gray-100 dark:border-gray-800 items-center">
+                            <Text className="text-[10px] font-black uppercase tracking-widest text-gray-400">Empty Logs - Go Post Something!</Text>
+                        </View>
+                    );
+                }}
+                ListFooterComponent={() => (
+                    <View style={{ paddingBottom: insets.bottom + 100 }}>
+                        {isFetchingNextPage && <ActivityIndicator className="py-4" color="#2563eb" />}
+                    </View>
+                )}
+            />
+        </View>
     );
 }

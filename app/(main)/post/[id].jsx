@@ -1,22 +1,54 @@
 import { useLocalSearchParams } from 'expo-router';
+import { useColorScheme } from 'nativewind';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, DeviceEventEmitter, ScrollView, View } from 'react-native';
+import { DeviceEventEmitter, Dimensions, ScrollView, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useSWR from 'swr';
-// 1. Import AdMob components
+import AnimeLoading from '../../../components/AnimeLoading';
 import CommentSection from "../../../components/CommentSection";
 import PostCard from "../../../components/PostCard";
 import SimilarPosts from "../../../components/SimilarPosts";
 import { Text } from '../../../components/Text';
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
-const API_URL = "https://oreblogda.com"
+const { width } = Dimensions.get('window');
+const API_URL = "https://oreblogda.com";
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams();
-  const [similarPosts, setSimilarPosts] = useState([]);
+  const { colorScheme } = useColorScheme();
+  const insets = useSafeAreaInsets();
+  const isDark = colorScheme === "dark";
   
+  const [similarPosts, setSimilarPosts] = useState([]);
   const scrollRef = useRef(null);
 
+  // --- 1. ANIMATION HOOKS (Moved to top to prevent Hook Order Error) ---
+  const streamX = useSharedValue(-width);
+  
+  const streamStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: streamX.value }],
+  }));
+
+  useEffect(() => {
+    streamX.value = withRepeat(
+      withTiming(width, {
+        duration: 3000,
+        easing: Easing.linear,
+      }),
+      -1,
+      false
+    );
+  }, []);
+
+  // --- 2. FUNCTIONAL HOOKS ---
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener("doScrollToTop", () => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -25,7 +57,7 @@ export default function PostDetailScreen() {
   }, []);
 
   const { data: post, error, mutate, isLoading } = useSWR(
-    `${API_URL}/api/posts/${id}`,
+    id ? `${API_URL}/api/posts/${id}` : null,
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -38,7 +70,8 @@ export default function PostDetailScreen() {
       .then(data => {
         const filtered = (data.posts || []).filter((p) => p._id !== id);
         setSimilarPosts(filtered);
-      });
+      })
+      .catch(err => console.error("Similar posts fetch failed", err));
 
     handleViewIncrement(post._id);
   }, [post?._id]);
@@ -50,75 +83,116 @@ export default function PostDetailScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "view" }),
       });
-      mutate({ ...post, views: (post.views || 0) + 1 }, false);
+      if (post) {
+        mutate({ ...post, views: (post.views || 0) + 1 }, false);
+      }
     } catch (e) {
       console.error("View count update failed", e);
     }
   };
 
+  // --- 3. CONDITIONAL RENDERING (Must stay after all Hook calls) ---
   if (isLoading) {
-    return (
-      <View className="flex-1 justify-center items-center bg-white dark:bg-[#0a0a0a]">
-        <ActivityIndicator size="large" color="#3b82f6" />
-      </View>
-    );
+    return <AnimeLoading message="Loading..." subMessage="Fetching Post" />
   }
 
   if (error || !post) {
     return (
-      <View className="flex-1 justify-center items-center">
-        <Text>Post not found</Text>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDark ? '#111827' : '#fff' }}>
+        <Text className="dark:text-white">Post not found</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-white dark:bg-gray-900">
+    <View style={{ flex: 1, backgroundColor: isDark ? "#050505" : "#ffffff" }}>
+      
+      {/* --- TOP DATA STREAM LOADER --- */}
+      <View 
+        className="absolute top-0 left-0 w-full h-[1px] z-50 overflow-hidden"
+        style={{ backgroundColor: isDark ? 'rgba(30, 58, 138, 0.2)' : 'rgba(37, 99, 235, 0.1)' }}
+      >
+        <Animated.View 
+          className="h-full w-1/2 bg-blue-500"
+          style={[streamStyle, { shadowColor: '#3b82f6', shadowRadius: 4, shadowOpacity: 0.5 }]}
+        />
+      </View>
+
       <ScrollView 
         ref={scrollRef} 
         onScroll={(e) => {
           DeviceEventEmitter.emit("onScroll", e.nativeEvent.contentOffset.y);
         }}
         scrollEventThrottle={16}
-        className="flex-1"
-        contentContainerStyle={{ paddingTop: 40, paddingBottom: 20 }} 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ 
+          paddingTop: insets.top + 20, 
+          paddingBottom: insets.bottom + 100, 
+          paddingHorizontal: 16 
+        }} 
       >
-        <View className="p-4 relative">
+        {/* --- BREADCRUMB HUD --- */}
+        <View className="flex-row items-center gap-2 mb-6 px-1">
+          <Text className="text-[10px] font-black text-blue-600 tracking-widest uppercase">
+            Intel_Stream
+          </Text>
+          <View className="h-[1px] w-8 bg-gray-200 dark:bg-gray-800" />
+          <Text 
+            numberOfLines={1}
+            className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest flex-1"
+          >
+            {post?.category || "Unclassified"}
+          </Text>
+        </View>
+
+        {/* --- MAIN CONTENT SECTOR --- */}
+        <View className="mb-8 relative">
+          {/* Corner Decoration Overlay */}
+          <View 
+            className="absolute top-0 right-0 w-10 h-10 border-t border-r border-blue-600/20 rounded-tr-[32px] z-10" 
+            pointerEvents="none" 
+          />
           
-          {/* Main Post Section */}
-          <View className="mb-4">
-            <PostCard
-              post={post}
-              isFeed={false}
-              posts={[post]}
-              setPosts={mutate}
-              hideComments={true}
-            />
-          </View>
+          <PostCard
+            post={post}
+            isFeed={false}
+            posts={[post]}
+            setPosts={mutate}
+            hideComments={true}
+            isDark={isDark}
+          />
+        </View>
 
-          {/* Comment Section */}
-          <View className="mb-6">
-            <CommentSection postId={post._id} mutatePost={mutate} />
+        {/* --- COMMS CHANNEL (Comment Section) --- */}
+        <View className="mb-10">
+          <View className="flex-row items-center gap-2 mb-4 px-2">
+            <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+            <Text className="text-[11px] font-[900] uppercase tracking-[0.2em] text-gray-900 dark:text-white">
+              Comms_Channel
+            </Text>
           </View>
-
-          {/* Similar Posts */}
-          <View className="mb-10">
-            <Text className="text-xl font-bold mb-4 dark:text-white">Similar Posts</Text>
-            <SimilarPosts
-              posts={similarPosts}
-              category={post?.category}
-              currentPostId={post?._id}
-            />
+          
+          <View className="bg-gray-50/50 dark:bg-gray-900/30 rounded-[32px] border border-gray-100 dark:border-blue-900/20 p-1">
+            <CommentSection postId={post?._id} mutatePost={mutate} />
           </View>
         </View>
-        {/* 2. Banner Ad at the absolute bottom of the screen */}
-      {/* <View className="items-center bg-gray-50 mb-14 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 py-1">
-        <BannerAd
-          unitId={TestIds.BANNER}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          onAdFailedToLoad={(error) => console.error("Ad failed:", error)}
-        />
-      </View> */}
+
+        {/* --- SIMILAR INTEL SECTOR --- */}
+        <View className="mb-10">
+          <View className="flex-row items-center gap-4 mb-6">
+            <Text className="text-2xl font-[900] italic uppercase tracking-tighter text-gray-900 dark:text-white">
+              Related <Text className="text-blue-600">Intel</Text>
+            </Text>
+            <View className="h-[1px] flex-1 bg-gray-100 dark:bg-gray-800" />
+          </View>
+          
+          <SimilarPosts
+            posts={similarPosts}
+            category={post?.category}
+            currentPostId={post?._id}
+          />
+        </View>
+
       </ScrollView>
     </View>
   );

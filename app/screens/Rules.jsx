@@ -1,110 +1,164 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { SafeAreaView, ScrollView, TouchableOpacity, View } from 'react-native';
+import { Dimensions, SafeAreaView, ScrollView, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../components/Text';
+
+const { width } = Dimensions.get('window');
+
+const THEME = {
+  bg: "#0a0a0a",
+  card: "#111111",
+  accent: "#2563eb",
+  border: "#1e293b",
+  success: "#22c55e",
+  error: "#ef4444",
+  glowBlue: "rgba(37, 99, 235, 0.08)",
+  glowRed: "rgba(239, 68, 68, 0.05)"
+};
 
 export default function Rules() {
   const router = useRouter();
 
   const RuleItem = ({ icon, title, desc, type }) => (
-    <View className={`p-5 rounded-3xl mb-4 border ${
-      type === 'success' 
-      ? 'bg-green-50 dark:bg-green-900/10 border-green-100 dark:border-green-900/20' 
-      : 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/20'
-    }`}>
-      <View className="flex-row items-center mb-2">
-        <Ionicons 
-          name={icon} 
-          size={20} 
-          color={type === 'success' ? '#22c55e' : '#ef4444'} 
-        />
-        <Text className={`ml-2 font-bold ${type === 'success' ? 'text-green-800 dark:text-green-400' : 'text-red-800 dark:text-red-400'}`}>
+    <View 
+      style={{ 
+        backgroundColor: THEME.card, 
+        borderColor: type === 'success' ? `${THEME.success}40` : `${THEME.error}40` 
+      }}
+      className="p-6 rounded-[32px] mb-4 border-2 shadow-sm"
+    >
+      <View className="flex-row items-center mb-3">
+        <View 
+          className="w-8 h-8 rounded-lg items-center justify-center border"
+          style={{ 
+            backgroundColor: type === 'success' ? `${THEME.success}10` : `${THEME.error}10`,
+            borderColor: type === 'success' ? `${THEME.success}30` : `${THEME.error}30`
+          }}
+        >
+          <Ionicons 
+            name={icon} 
+            size={18} 
+            color={type === 'success' ? THEME.success : THEME.error} 
+          />
+        </View>
+        <Text 
+          className="ml-3 font-black uppercase italic tracking-tight"
+          style={{ color: type === 'success' ? THEME.success : THEME.error }}
+        >
           {title}
         </Text>
       </View>
-      <Text className="text-gray-600 dark:text-gray-400 text-sm leading-5">{desc}</Text>
+      <Text className="text-gray-500 text-sm leading-6 font-medium">{desc}</Text>
     </View>
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-gray-900">
-      <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingBottom: 50 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.bg }}>
+      {/* --- Ambient Background Glows --- */}
+      <View style={{ position: 'absolute', top: -100, left: -50, width: 350, height: 350, borderRadius: 175, backgroundColor: THEME.glowBlue }} />
+      <View style={{ position: 'absolute', bottom: 100, right: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowRed }} />
+
+      <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingBottom: 60 }}>
         
-        {/* Header */}
-        <View className="flex-row items-center mt-8 mb-8">
-          <TouchableOpacity onPress={() => router.back()} className="p-2">
-            <Ionicons name="arrow-back" size={24} color="#3b82f6" />
+        {/* --- Header --- */}
+        <View className="flex-row items-center mt-8 mb-10">
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+            className="w-12 h-12 items-center justify-center rounded-2xl border-2"
+          >
+            <Ionicons name="chevron-back" size={24} color={THEME.accent} />
           </TouchableOpacity>
-          <Text className="text-2xl font-bold ml-2 dark:text-white">Rules & Approval</Text>
+          <View className="ml-5">
+            <Text className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">Moderation Protocol</Text>
+            <Text className="text-3xl font-black italic uppercase text-white">Rules & Approval</Text>
+          </View>
         </View>
 
-        <Text className="text-gray-600 dark:text-gray-400 mb-6 px-1">
-          Our team reviews every post. Follow these guidelines to ensure your diary entry goes live as quickly as possible.
+        <Text className="text-gray-500 font-medium mb-10 leading-6 px-1">
+          THE SYSTEM reviews every uplink. Synchronize your content with these directives to ensure immediate deployment to the main feed.
         </Text>
 
         {/* --- ✅ BOOST APPROVAL --- */}
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-4 ml-1">How to get Approved Fast</Text>
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">Positive Optimization</Text>
         
         <RuleItem 
           type="success"
-          icon="color-wand-outline"
-          title="Rich Formatting"
-          desc="Posts that use [section], [h], and [li] tags effectively are much more likely to be approved. We value readability!"
+          icon="image-outline"
+          title="Visual Data Assets"
+          desc="Including high-quality relevant images significantly increases approval probability. Visuals enhance the user experience across the grid."
+        />
+
+        <RuleItem 
+          type="success"
+          icon="code-working-outline"
+          title="Rich Syntax Tags"
+          desc="Effective use of [section], [h], and [li] protocols ensures data readability. Clean syntax equals faster processing."
         />
 
         <RuleItem 
           type="success"
           icon="language-outline"
-          title="Language: English"
-          desc="While we accept multiple languages, posts written in English are currently processed much faster by our moderation team."
-        />
-
-        <RuleItem 
-          type="success"
-          icon="pricetag-outline"
-          title="Accurate Categorization"
-          desc="Ensure your post matches its category (e.g., don't post News under Memes). Accuracy helps users find your content."
+          title="Standard: English"
+          desc="While global dialects are supported, English content is prioritized for real-time decryption by the moderation core."
         />
 
         <View className="h-6" />
 
         {/* --- ❌ REJECTION TRIGGERS --- */}
-        <Text className="text-gray-400 font-bold uppercase text-[11px] tracking-widest mb-4 ml-1">Common Rejection Reasons</Text>
+        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-4 ml-1">Critical Fault Triggers</Text>
+
+        <RuleItem 
+          type="error"
+          icon="scan-outline"
+          title="Visual Violation"
+          desc="Unrelated, blurry, or low-effort images lead to rejection. Images must synchronize with the written data payload."
+        />
 
         <RuleItem 
           type="error"
           icon="alert-circle-outline"
-          title="Adult & Sexual Content"
-          desc="Strictly prohibited. Any post containing NSFW text, images, or links will be rejection."
+          title="Restricted Content"
+          desc="Adult/NSFW data is strictly prohibited. Any entry containing sexual text, images, or links will be purged immediately."
         />
 
         <RuleItem 
           type="error"
           icon="trash-outline"
-          title="Low Effort / Spam"
-          desc="Posts with just 'Hi', 'Test', or repetitive gibberish are considered spam. Your entry should provide value to the readers."
+          title="Spam / Low Bandwidth"
+          desc="Entries consisting of gibberish, single words, or repetitive test sequences are flagged as spam and deleted."
         />
 
         <RuleItem 
           type="error"
-          icon="warning-outline"
-          title="Hate Speech & Bullying"
-          desc="We maintain a positive environment. Content that attacks individuals or groups based on race, religion, or identity is deleted immediately."
+          icon="shield-outline"
+          title="Hostile Conduct"
+          desc="Content attacking individuals or groups based on identity, race, or belief triggers an immediate account suspension."
         />
 
         <RuleItem 
           type="error"
           icon="link-outline"
-          title="Broken or Shortened Links"
-          desc="Shortened URLs (like bit.ly) are often flagged as unsafe. Use direct TikTok or YouTube links for media."
+          title="Corrupted Links"
+          desc="Shortened URLs (bit.ly/etc) are flagged as security risks. Use direct TikTok or YouTube source links only."
         />
 
         {/* Final Note */}
-        <View className="mt-8 p-6 bg-gray-50 dark:bg-gray-900 rounded-3xl items-center">
-          <Ionicons name="time-outline" size={24} color="#9ca3af" />
-          <Text className="text-center text-gray-500 text-xs mt-3 leading-5">
-            Most posts are reviewed within 1-6 hours. If your post is rejected, you can submit a new one after 12 hours.
+        <View 
+          style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+          className="mt-10 p-8 rounded-[40px] border-2 items-center"
+        >
+          <View className="w-12 h-12 bg-blue-500/10 rounded-full items-center justify-center mb-4">
+            <Ionicons name="time-outline" size={24} color={THEME.accent} />
+          </View>
+          <Text className="text-center text-gray-500 text-[11px] font-black uppercase tracking-widest leading-5">
+            Processing Latency: 1-6 Hours{"\n"}
+            <Text className="text-gray-700">Re-Submission Lock: 12 Hours</Text>
           </Text>
+        </View>
+
+        <View className="items-center mt-12 mb-10">
+            <Text className="text-gray-800 font-black text-[8px] uppercase tracking-[0.4em]">Policy Engine v4.0.1</Text>
         </View>
 
       </ScrollView>

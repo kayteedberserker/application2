@@ -9,15 +9,18 @@ import {
 	Linking,
 	StatusBar,
 	TouchableOpacity,
-	View,
 	useColorScheme as useSystemScheme,
+	View
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import AnimeLoading from "../../components/AnimeLoading";
 import { useUser } from "../../context/UserContext";
 import "../globals.css";
 import CategoryNav from "./../../components/CategoryNav";
 import TopBar from "./../../components/Topbar";
+
 export default function MainLayout() {
+	;
 	const { colorScheme, setColorScheme } = useNativeWind();
 	const systemScheme = useSystemScheme(); // ✅ system theme
 
@@ -28,20 +31,39 @@ export default function MainLayout() {
 	const navY = useRef(new Animated.Value(0)).current;
 	const { user, contextLoading } = useUser();
 
-    // ✅ Only redirect if we ARE NOT loading context AND we have no user
-    if (!contextLoading && !user) {
-        return <Redirect href="/screens/FirstLaunchScreen" />;
-    }
+	useEffect(() => {
+		// We only ping if we have a deviceId (meaning the user has registered)
+		if (user?.deviceId) {
+			const updateActivity = async () => {
+				try {
+					// This happens in the background
+					await fetch("https://oreblogda.com/api/mobile/app-open", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ deviceId: user.deviceId }),
+					});
+				} catch (err) {
+					// We don't alert the user for analytics failures
+					// console.error("Failed to update lastActive:", err);
+				}
+			};
+
+			updateActivity();
+		}
+	}, [user?.deviceId]); // Runs once on mount, and again if user logs in
+
+	// ✅ Only redirect if we ARE NOT loading context AND we have no user
+	if (!contextLoading && !user) {
+		return <Redirect href="/screens/FirstLaunchScreen" />;
+	}
+
+	// While context is fetching from AsyncStorage, show the loader with return
+	if (contextLoading) {
+		return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />;
+	}
+
 	const insets = useSafeAreaInsets();
-    // While context is fetching from AsyncStorage, show a simple loader
-    if (contextLoading) {
-        return (
-            <View className="flex-1 bg-white dark:bg-gray-900 justify-center items-center">
-                <ActivityIndicator size="large" color="#3b82f6" />
-                <RNText style={{marginTop: 10, color: '#9ca3af'}}>Diary Loading...</RNText>
-            </View>
-        );
-    }
+
 	// ✅ FIX: Sync system theme → NativeWind
 	useEffect(() => {
 		if (systemScheme) {
@@ -67,7 +89,7 @@ export default function MainLayout() {
 				if (isNavVisible) {
 					setIsNavVisible(false);
 					Animated.timing(navY, {
-						toValue: -50,
+						toValue: -70,
 						duration: 200,
 						useNativeDriver: true,
 					}).start();
@@ -84,97 +106,114 @@ export default function MainLayout() {
 	const handleBackToTop = () => DeviceEventEmitter.emit("doScrollToTop");
 
 	return (
-		<View style={{ flex: 1, backgroundColor: isDark ? "#111827" : "#ffffff" }}>
+		<>
 			{/* STATUS BAR */}
 			<StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 
 			{/* HEADER */}
-			{/* HEADER */}
 			<SafeAreaView
 				style={{
-					backgroundColor: "transparent",
 					zIndex: 100,
-					maxHeight: 110,
-					// ❌ REMOVE: maxHeight: 80 (This was strangling the CategoryNav)
-					// ❌ REMOVE: overflow: 'visible'
-					// ✅ ADD: Just let it flex or take natural height
-				}}
-			>
+					maxHeight: 130,
+				}}>
 				<TopBar isDark={isDark} />
-
 				<Animated.View
 					style={{
 						transform: [{ translateY: navY }],
 						zIndex: 10,
-						// Ensure the animated view doesn't have a tiny height either
 					}}
 				>
 					<CategoryNav isDark={isDark} />
 				</Animated.View>
 			</SafeAreaView>
-
-
 			{/* TABS */}
-			<Tabs
-				screenOptions={{
-					headerShown: false,
-					tabBarActiveTintColor: "#60a5fa",
-					tabBarInactiveTintColor: isDark ? "#94a3b8" : "#64748b",
-					tabBarStyle: {
-						position: "absolute",
-						bottom: insets.bottom + 15, // 🔥 FIX
-						height: 55,
-						transform: [{ translateX: '15%' }],
-						width: "70%",
-						alignSelf: "center",
-						borderRadius: 25,
-						backgroundColor: isDark ? "#1e293b" : "#ffffff",
-						borderTopWidth: 0,
-						paddingTop: 2,
-						elevation: 5,
-					},
-				}}
-			>
-				<Tabs.Screen
-					name="index"
-					options={{
-						title: "Home",
-						tabBarIcon: ({ color, size }) => (
-							<Ionicons name="home-outline" size={size} color={color} />
-						),
-					}}
-				/>
-				<Tabs.Screen
-					name="authordiary"
-					options={{
-						title: "Ore Diary",
-						tabBarIcon: ({ color, size }) => (
-							<Ionicons name="add-circle-outline" size={size} color={color} />
-						),
-					}}
-				/>
-				<Tabs.Screen
-					name="profile"
-					options={{
-						title: "Ore Profile",
-						tabBarIcon: ({ color, size }) => (
-							<Ionicons name="person-outline" size={size} color={color} />
-						),
-					}}
-				/>
+            <Tabs
+                screenOptions={{
+                    headerShown: false,
+                    tabBarActiveTintColor: "#60a5fa",
+                    tabBarInactiveTintColor: isDark ? "#94a3b8" : "#64748b",
+                    tabBarShowLabel: true, 
+                    tabBarLabelStyle: {
+                        fontSize: 9,
+                        fontWeight: '900',
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                        marginBottom: 8,
+                    },
+                    tabBarStyle: {
+                        position: "absolute",
+                        bottom: insets.bottom + 15,
+                        height: 60, 
+                        transform: [{ translateX: '15%' }], // 🛡️ PRESERVED AS REQUESTED
+                        width: "70%",
+                        alignSelf: "center",
+                        borderRadius: 25,
+                        backgroundColor: isDark ? "#111111" : "#ffffff",
+                        borderTopWidth: 0,
+                        borderWidth: isDark ? 1 : 0,
+                        borderColor: "#1e293b",
+                        paddingTop: 2,
+                        elevation: 10,
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 5,
+                    },
+                }}
+            >
+                <Tabs.Screen
+                    name="index"
+                    options={{
+                        title: "Home",
+                        tabBarIcon: ({ color, focused }) => (
+                            <Ionicons 
+                                name={focused ? "home" : "home-outline"} 
+                                size={22} 
+                                color={color} 
+                            />
+                        ),
+                    }}
+                />
+                <Tabs.Screen
+                    name="authordiary"
+                    options={{
+                        title: "Ore Diary",
+                        tabBarIcon: ({ color, focused }) => (
+                            <Ionicons 
+                                name={focused ? "add-circle" : "add-circle-outline"} 
+                                size={24} 
+                                color={color} 
+                            />
+                        ),
+                    }}
+                />
+                <Tabs.Screen
+                    name="profile"
+                    options={{
+                        title: "Profile",
+                        tabBarIcon: ({ color, focused }) => (
+                            <Ionicons 
+                                name={focused ? "person" : "person-outline"} 
+                                size={22} 
+                                color={color} 
+                            />
+                        ),
+                    }}
+                />
 
-				<Tabs.Screen name="post/[id]" options={{ href: null }} />
-				<Tabs.Screen name="author/[id]" options={{ href: null }} />
-				<Tabs.Screen name="categories/[id]" options={{ href: null }} />
-			</Tabs>
+                {/* Hidden Routes */}
+                <Tabs.Screen name="post/[id]" options={{ href: null }} />
+                <Tabs.Screen name="author/[id]" options={{ href: null }} />
+                <Tabs.Screen name="categories/[id]" options={{ href: null }} />
+            </Tabs>
 
-			{/* FLOATING BUTTONS */}
+			{/* FLOATING ACTION INTERFACE */}
 			<View
 				style={{
 					position: "absolute",
-					bottom: insets.bottom + 20, // 🔥 FIX
-					right: 15,
-					gap: 10,
+					bottom: insets.bottom + 20,
+					right: 20,
+					gap: 12,
 					alignItems: "center",
 					zIndex: 1000,
 				}}
@@ -182,17 +221,23 @@ export default function MainLayout() {
 				{showTop && (
 					<TouchableOpacity
 						onPress={handleBackToTop}
+						activeOpacity={0.7}
 						style={{
-							width: 45,
-							height: 45,
-							borderRadius: 23,
+							width: 48,
+							height: 48,
+							borderRadius: 16,
 							justifyContent: "center",
 							alignItems: "center",
-							backgroundColor: "#3b82f6",
+							backgroundColor: "#111111",
+							borderWidth: 1.5,
+							borderColor: "#1e293b",
 							elevation: 5,
+							shadowColor: "#000",
+							shadowOffset: { width: 0, height: 2 },
+							shadowOpacity: 0.2,
 						}}
 					>
-						<Ionicons name="arrow-up" size={24} color="white" />
+						<Ionicons name="chevron-up" size={24} color="#3b82f6" />
 					</TouchableOpacity>
 				)}
 
@@ -202,15 +247,27 @@ export default function MainLayout() {
 							"https://whatsapp.com/channel/0029VbBkiupCRs1wXFWtDG3N"
 						)
 					}
-					style={{ elevation: 6 }}
+					activeOpacity={0.8}
+					style={{
+						elevation: 8,
+						shadowColor: "#22c55e",
+						shadowOffset: { width: 0, height: 4 },
+						shadowOpacity: 0.3,
+						shadowRadius: 8,
+					}}
 				>
 					<Image
 						source={require("../../assets/images/whatsapp.png")}
-						style={{ width: 50, height: 50, borderRadius: 25 }}
+						style={{
+							width: 52,
+							height: 52,
+							borderRadius: 18,
+							borderWidth: 2,
+							borderColor: "#111111"
+						}}
 					/>
 				</TouchableOpacity>
 			</View>
-
-		</View>
+		</>
 	);
 }

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import useSWR from "swr";
-// 1. Import AdMob components
 import PostCard from "./PostCard";
+// import AppBanner from "./AppBanner";
+// import { Text } from "./Text";
 
 const API_URL = "https://oreblogda.com";
 const fetcher = (url) => fetch(url).then((res) => res.json());
@@ -60,15 +61,8 @@ export default function SimilarPosts({ category, currentPostId }) {
                   <Text className="text-[10px] text-gray-400 mb-4 uppercase tracking-widest">
                     Sponsored
                   </Text>
-                  
-                  <BannerAd
-                    unitId={TestIds.BANNER}
-                    // 300x250 - Fits perfectly inside your w-72 (which is ~288px) 
-                    // Note: If 300 is slightly too wide for w-72, use LARGE_BANNER or 
-                    // adjust the container width to 300.
-                    size={BannerAdSize.MEDIUM_RECTANGLE} 
-                    onAdFailedToLoad={(error) => console.error("Similar Ad Error:", error)}
-                  />
+
+                  <AppBanner size={BannerAdSize.MEDIUM_RECTANGLE} />
                   
                   <Text className="text-[10px] text-gray-400 mt-4 text-center px-4">
                     Relevant content for you

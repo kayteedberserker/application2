@@ -1,122 +1,215 @@
-import { useEffect, useRef, useState } from "react";
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useColorScheme } from "nativewind";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  DeviceEventEmitter,
-  FlatList,
-  InteractionManager,
-  View,
+	Animated,
+	DeviceEventEmitter,
+	Dimensions,
+	Easing,
+	FlatList,
+	InteractionManager,
+	View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useSWRInfinite from "swr/infinite";
+import AnimeLoading from "./AnimeLoading";
 import PostCard from "./PostCard";
+import { SyncLoading } from "./SyncLoading";
 import { Text } from "./Text";
 
+const { width, height } = Dimensions.get('window');
 const LIMIT = 5;
 const API_URL = "https://oreblogda.com/api/posts";
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
 export default function PostsViewer() {
-  const scrollRef = useRef(null);
-  const [ready, setReady] = useState(false); // New state to delay rendering
+    const scrollRef = useRef(null);
+    const insets = useSafeAreaInsets();
+    const { colorScheme } = useColorScheme();
+    const isDark = colorScheme === "dark";
+    const [ready, setReady] = useState(false);
 
-  // Delay SWR and Ads until the navigation animation is finished
-  useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
-      setReady(true);
+    const pulseAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const task = InteractionManager.runAfterInteractions(() => {
+            setReady(true);
+        });
+        return () => task.cancel();
+    }, []);
+
+    useEffect(() => {
+        const animation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 1,
+                    duration: 1500,
+                    easing: Easing.linear,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 0,
+                    duration: 1500,
+                    easing: Easing.linear,
+                    useNativeDriver: true,
+                })
+            ])
+        );
+        animation.start();
+        return () => animation.stop(); // Cleanup animation on unmount
+    }, [pulseAnim]);
+
+    const getKey = (pageIndex, previousPageData) => {
+        if (!ready) return null;
+        if (previousPageData && previousPageData.posts?.length < LIMIT) return null;
+        return `${API_URL}?page=${pageIndex + 1}&limit=${LIMIT}`;
+    };
+
+    const { data, size, setSize, isLoading, isValidating, mutate } = useSWRInfinite(getKey, fetcher, {
+        refreshInterval: 15000, // Slightly increased to give weak CPUs a breather
+        revalidateOnFocus: false, // Turn off for weak devices to prevent random crashes
+        dedupingInterval: 5000,
     });
-    return () => task.cancel();
-  }, []);
 
-  const getKey = (pageIndex, previousPageData) => {
-    if (!ready) return null; // Don't fetch until ready
-    if (previousPageData && previousPageData.posts?.length < LIMIT) return null;
-    return `${API_URL}?page=${pageIndex + 1}&limit=${LIMIT}`;
-  };
+    // OPTIMIZATION: Memoize the posts array so it doesn't re-calculate on every render
+    const posts = useMemo(() => {
+        if (!data) return [];
+        const postMap = new Map();
+        data.forEach(page => {
+            if (page.posts) {
+                page.posts.forEach(p => postMap.set(p._id, p));
+            }
+        });
+        return Array.from(postMap.values());
+    }, [data]);
 
-  const { data, size, setSize, isLoading, isValidating, mutate } = useSWRInfinite(getKey, fetcher, {
-    refreshInterval: 10000,
-    revalidateOnFocus: true,
-    dedupingInterval: 5000,
-  });
+    const hasMore = data?.[data.length - 1]?.posts?.length === LIMIT;
 
-  const posts = data
-    ? Array.from(
-        new Map(
-          data.flatMap(page => page.posts || []).map(p => [p._id, p])
-        ).values()
-      )
-    : [];
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener("doScrollToTop", () => {
+            scrollRef.current?.scrollToOffset({ offset: 0, animated: true });
+        });
+        return () => sub.remove(); // Cleanup listener
+    }, []);
 
-  const hasMore = data?.[data.length - 1]?.posts?.length === LIMIT;
+    const loadMore = () => {
+        if (!hasMore || isValidating || !ready || isLoading) return;
+        setSize(size + 1);
+    };
 
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener("doScrollToTop", () => {
-      scrollRef.current?.scrollToOffset({ offset: 0, animated: true });
-    });
-    return () => sub.remove();
-  }, []);
+    const renderItem = ({ item, index }) => {
+        const showAd = (index + 1) % 4 === 0;
 
-  const loadMore = () => {
-    if (!hasMore || isValidating || !ready) return;
-    setSize(size + 1);
-  };
+        return (
+            <View>
+                <PostCard post={item} isFeed posts={posts} setPosts={mutate} />
+                {showAd && ready && (
+                    <View className="mb-8 mt-3 w-full p-6 border border-dashed border-gray-300 dark:border-gray-800 rounded-[32px] bg-gray-50/50 dark:bg-white/5 items-center justify-center">
+                        <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] italic text-center">
+                            Sponsored Transmission
+                        </Text>
+                    </View>
+                )}
+            </View>
+        );
+    };
 
-  const renderItem = ({ item, index }) => {
-    const showAd = (index + 1) % 4 === 0;
+    if (!ready) {
+        return <AnimeLoading message="Loading Posts" subMessage="Preparing content" />;
+    }
+
+    const ListHeader = () => (
+        <View className="mb-10 pb-2">
+            <View className="flex-row items-center gap-3 mb-1">
+                <View className="h-2 w-2 bg-blue-600 rounded-full" />
+                <Text className="text-[10px] font-[900] uppercase tracking-[0.4em] text-blue-600">
+                    Live Feed Active
+                </Text>
+            </View>
+            <View className="relative">
+                <Text
+                    className={`text-5xl font-[900] italic tracking-tighter uppercase ${isDark ? "text-white" : "text-gray-900"
+                        }`}
+                >
+                    Anime <Text className="text-blue-600">Intel</Text>
+                </Text>
+                <View className="h-[2px] w-24 bg-blue-600 mt-2" />
+            </View>
+        </View>
+    );
 
     return (
-      <View>
-        <PostCard post={item} isFeed posts={posts} setPosts={mutate} />
-        
-        {/* Only load ads once the screen transition is finished */}
-        {/* {showAd && ready && (
-          <View className="my-4 items-center bg-gray-50 dark:bg-gray-800/50 py-3 rounded-xl border border-gray-100 dark:border-gray-800">
-            <Text className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest">Sponsored</Text>
-            <BannerAd
-              unitId={TestIds.BANNER}
-              size={BannerAdSize.MEDIUM_RECTANGLE}
-              onAdFailedToLoad={(error) => console.error("Banner Error:", error)}
+        <View className={`flex-1 ${isDark ? "bg-[#050505]" : "bg-white"}`}>
+            <View
+                className="absolute left-0 right-0 z-50"
+                style={{
+                    top: insets.top,
+                    height: 1,
+                    opacity: 0.3,
+                    width: '100%'
+                }}
             />
-          </View>
-        )} */}
-      </View>
-    );
-  };
 
-  // Show a simple loader while the transition finishes to keep things light
-  if (!ready) {
-    return (
-      <View className="flex-1 justify-center items-center py-10">
-        <ActivityIndicator size="small" color="#3b82f6" />
-      </View>
-    );
-  }
+            <FlatList
+                ref={scrollRef}
+                data={posts}
+                keyExtractor={(item) => item._id}
+                ListHeaderComponent={ListHeader}
+                contentContainerStyle={{
+                    paddingHorizontal: 16,
+                    paddingTop: insets.top + 20,
+                    paddingBottom: insets.bottom + 100,
+                }}
+                renderItem={renderItem}
+                onEndReached={loadMore}
+                onEndReachedThreshold={0.5} // Trigger earlier to avoid "jank"
+                
+                // CRITICAL FOR SAMSUNG A30 PERFORMANCE
+                removeClippedSubviews={true} 
+                initialNumToRender={5}
+                maxToRenderPerBatch={5}
+                windowSize={5}
+                updateCellsBatchingPeriod={50}
 
-  return (
-    <FlatList
-      ref={scrollRef}
-      data={posts}
-      keyExtractor={(item) => item._id}
-      contentContainerStyle={{
-        padding: 16,
-        paddingTop: 40,
-        paddingBottom: 60,
-      }}
-      renderItem={renderItem}
-      onEndReached={loadMore}
-      onEndReachedThreshold={0.4}
-      onScroll={(e) => {
-        const offsetY = e.nativeEvent.contentOffset.y;
-        DeviceEventEmitter.emit("onScroll", offsetY);
-      }}
-      scrollEventThrottle={16}
-      ListFooterComponent={
-        isLoading || isValidating ? (
-          <ActivityIndicator size="small" color="#3b82f6" className="my-4" />
-        ) : !hasMore ? (
-          <Text className="text-center text-gray-400 my-4">No more posts</Text>
-        ) : null
-      }
-    />
-  );
+                onScroll={(e) => {
+                    const offsetY = e.nativeEvent.contentOffset.y;
+                    DeviceEventEmitter.emit("onScroll", offsetY);
+                }}
+                scrollEventThrottle={32} // Reduced frequency to save CPU cycles
+                ListFooterComponent={
+                    <View className="py-12 items-center justify-center min-h-[140px]">
+                        {isLoading || isValidating ? (
+                            <SyncLoading />
+                        ) : !hasMore && posts.length > 0 ? (
+                            <Text className="text-[10px] font-[900] uppercase tracking-[0.5em] text-gray-400">
+                                End of Transmission
+                            </Text>
+                        ) : posts.length === 0 ? (
+                            <View className="py-20">
+                                <Text className="text-2xl font-[900] uppercase italic text-gray-400">
+                                    No Intel Found
+                                </Text>
+                            </View>
+                        ) : null
+                        }
+                    </View>
+                }
+            />
+
+            <View
+                className="absolute left-6 flex-row items-center gap-2"
+                style={{ bottom: insets.bottom + 20, opacity: 0.4 }}
+                pointerEvents="none"
+            >
+                <MaterialCommunityIcons name="pulse" size={14} color="#2563eb" />
+                <Animated.Text 
+                    style={{ opacity: pulseAnim }}
+                    className="text-[8px] font-[900] uppercase tracking-[0.4em] text-blue-600"
+                >
+                    Neural_Link_Established // Mobile_v4.0
+                </Animated.Text>
+            </View>
+        </View>
+    );
 }

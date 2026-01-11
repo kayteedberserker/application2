@@ -1,8 +1,10 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, DeviceEventEmitter, FlatList, Image, View } from "react-native";
-// 1. Import AdMob components
+import { DeviceEventEmitter, FlatList, Image, View } from "react-native";
+import AnimeLoading from "../../../components/AnimeLoading";
 import PostCard from "../../../components/PostCard";
+import { SyncLoading } from "../../../components/SyncLoading";
 import { Text } from "../../../components/Text";
 
 const API_BASE = "https://oreblogda.com/api"
@@ -11,6 +13,7 @@ export default function AuthorPage() {
   const { id } = useLocalSearchParams()
   const [author, setAuthor] = useState(null)
   const [posts, setPosts] = useState([]);
+  const [totalPosts, setTotalPosts] = useState(0); // Track lifetime total from API
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -39,6 +42,7 @@ export default function AuthorPage() {
       if (userRes.ok) setAuthor(userData.user);
       if (postRes.ok) {
         setPosts(postData.posts);
+        setTotalPosts(postData.total || postData.posts.length); // Initialize lifetime count
         setHasMore(postData.posts.length === 6);
       }
     } catch (error) {
@@ -57,6 +61,7 @@ export default function AuthorPage() {
       const data = await res.json();
       if (res.ok && data.posts.length > 0) {
         setPosts((prev) => [...prev, ...data.posts]);
+        setTotalPosts(data.total); // Keep total synced
         setPage(nextPage);
         setHasMore(data.posts.length === 6);
       } else {
@@ -73,65 +78,101 @@ export default function AuthorPage() {
     fetchInitialData();
   }, [id]);
 
-  // --- 💡 List Header Ad ---
-  const ListHeader = () => (
-    <View className="mb-4">
-      <View className="p-4 pt-20 border-b border-gray-100 dark:border-gray-800">
-        {author && (
-          <View className="flex-row items-center gap-4">
-            <Image
-              source={{ uri: author.profilePic?.url || "https://via.placeholder.com/150" }}
-              className="w-20 h-20 rounded-full border border-gray-200"
-            />
-            <View className="flex-1">
-              <Text className="text-2xl font-bold dark:text-white">{author.username}</Text>
-              <Text className="text-gray-600 dark:text-gray-400 mt-1">
-                {author.description || "This author hasn’t added a description yet."}
-              </Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Large Banner Ad under Description */}
-      {/* <View className="items-center py-4 bg-gray-50/50 dark:bg-gray-800/20 mt-2">
-        <Text className="text-[10px] text-gray-400 mb-2 uppercase tracking-tighter">Advertisement</Text>
-        <BannerAd
-          unitId={TestIds.BANNER}
-          size={BannerAdSize.LARGE_BANNER}
-          onAdFailedToLoad={(error) => console.error(error)}
-        />
-      </View> */}
-    </View>
-  );
-
-  // --- 💡 Every 3 Posts Ad Logic ---
-  const renderItem = ({ item, index }) => {
-    const showAd = (index + 1) % 3 === 0;
+  const ListHeader = () => {
+    // Rank logic variables based on lifetime totalPosts
+    const count = totalPosts;
+    const rankTitle = count > 200 ? "Master_Writer" : count > 150 ? "Elite_Writer" : count > 100 ? "Senior_Writer" : count > 50 ? "Novice_Writer" : count > 25 ? "Senior_Researcher" : "Novice_Researcher";
+    const rankIcon = count > 200 ? "👑" : count > 150 ? "💎" : count > 100 ? "🔥" : count > 50 ? "⚔️" : count > 25 ? "📜" : "🛡️";
+    const nextMilestone = count > 200 ? 500 : count > 150 ? 200 : count > 100 ? 150 : count > 50 ? 100 : count > 25 ? 50 : 25;
+    const progress = Math.min((count / nextMilestone) * 100, 100);
 
     return (
-      <View className="px-4">
-        <PostCard post={item} isFeed />
-        
-        {/* {showAd && (
-          <View className="my-6 items-center bg-gray-50 dark:bg-gray-800/30 py-4 rounded-2xl border border-gray-100 dark:border-gray-800">
-            <Text className="text-[10px] text-gray-400 mb-2 uppercase">Sponsored</Text>
-            <BannerAd
-              unitId={TestIds.BANNER}
-              size={BannerAdSize.LARGE_BANNER}
-              onAdFailedToLoad={(error) => console.error(error)}
-            />
+      <View className="px-4 pt-20 pb-6">
+        {author && (
+          <View 
+            className="relative p-6 bg-white/40 dark:bg-black/40 border border-gray-200 dark:border-blue-900/30 overflow-hidden shadow-2xl"
+            style={{ borderRadius: 32 }}
+          >
+            <Text className="absolute top-2 right-4 opacity-10 font-black uppercase italic text-4xl dark:text-white select-none">
+              Operator
+            </Text>
+            
+            <View className="flex-col items-center gap-6">
+              <View className="relative">
+                <View className="absolute inset-0 bg-blue-600 rounded-full blur-md opacity-20" />
+                <Image
+                  source={{ uri: author.profilePic?.url || "https://via.placeholder.com/150" }}
+                  className="w-32 h-32 rounded-full border-4 border-white dark:border-gray-900 shadow-xl"
+                />
+                <View className="absolute bottom-2 right-2 w-5 h-5 bg-green-500 border-4 border-white dark:border-black rounded-full" />
+              </View>
+
+              <View className="items-center w-full">
+                <View className="px-3 py-1 rounded-full bg-blue-600/10 border border-blue-600/20 mb-3">
+                  <Text className="text-[10px] font-black uppercase tracking-widest text-blue-600">Verified_Intel_Source</Text>
+                </View>
+                
+                <Text className="text-4xl font-black italic tracking-tighter uppercase text-gray-900 dark:text-white text-center">
+                  {author.username} - {author.lastStreak > 0 ? <Ionicons name="flame" size={30} color="#f97316"/> : <Ionicons name="flame" size={30} color="#ef4444"/>}{author.lastStreak > 0 ? `${author.lastStreak}` : "0"}
+                </Text>
+                
+                <Text className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center leading-relaxed font-medium px-4">
+                  {author.description || "This operator hasn’t synchronized a bio with the central network yet."}
+                </Text>
+
+                <View className="mt-8 w-full px-2">
+                  <View className="flex-row justify-between items-end mb-2">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-2xl">{rankIcon}</Text>
+                      <View>
+                        <Text className="text-[8px] font-mono uppercase tracking-[0.2em] text-blue-500/60 leading-none mb-1">Current_Class</Text>
+                        <Text className="text-sm font-black uppercase tracking-tighter dark:text-white">
+                          {rankTitle}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text className="text-[10px] font-mono font-bold text-gray-500 uppercase">
+                      EXP: {count} / {count > 150 ? "MAX" : nextMilestone}
+                    </Text>
+                  </View>
+
+                  <View className="h-2 w-full bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-300 dark:border-white/10">
+                    <View 
+                      style={{ width: `${progress}%` }}
+                      className="h-full bg-blue-600 shadow-lg shadow-blue-500"
+                    />
+                  </View>
+                  
+                  <Text className="text-[8px] font-mono uppercase tracking-widest text-center mt-2 opacity-50 dark:text-gray-400">
+                    System_Status: {count > 100 ? "Limit_Breaker_Active" : "Synchronizing_Archives"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+            
+            <View className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600/30" />
           </View>
-        )} */}
+        )}
+
+        <View className="flex-row items-center gap-4 mt-10 mb-4">
+          <Text className="text-xl font-black italic uppercase tracking-tighter text-gray-900 dark:text-white">
+            Intel <Text className="text-blue-600">Archives</Text>
+          </Text>
+          <View className="h-[1px] flex-1 bg-blue-600/20" />
+        </View>
       </View>
     );
   };
 
+  const renderItem = ({ item }) => (
+    <View className="px-4">
+      <PostCard post={item} isFeed />
+    </View>
+  );
+
   if (loading && posts.length === 0) {
     return (
-      <View className="flex-1 justify-center items-center bg-white dark:bg-gray-900">
-        <ActivityIndicator size="large" color="#3b82f6" />
-      </View>
+      <AnimeLoading message="Loading Author" subMessage="Fetching Author Info" />
     );
   }
 
@@ -143,10 +184,13 @@ export default function AuthorPage() {
       renderItem={renderItem}
       ListHeaderComponent={ListHeader}
       ListFooterComponent={
-        <View className="py-6">
-          {loading && <ActivityIndicator size="small" color="#3b82f6" />}
+        <View className="py-10">
+          {loading && <SyncLoading />}
           {!hasMore && posts.length > 0 && (
-            <Text className="text-center text-gray-500 mb-4">No more posts.</Text>
+            <View className="items-center opacity-30">
+              <View className="h-[1px] w-24 bg-gray-500 mb-4" />
+              <Text className="text-[10px] font-mono uppercase tracking-[0.4em] dark:text-white">End_Of_Transmission</Text>
+            </View>
           )}
         </View>
       }
@@ -162,7 +206,7 @@ export default function AuthorPage() {
       }}
       scrollEventThrottle={16}
       contentContainerStyle={{ paddingBottom: 120 }}
-      className="bg-white dark:bg-gray-900"
+      className="bg-white dark:bg-gray-950"
     />
   );
 }
