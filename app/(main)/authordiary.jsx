@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator, Alert,
     Linking,
-    Platform,
     ScrollView,
     StatusBar,
     Switch, TextInput, TouchableOpacity,
@@ -18,6 +17,7 @@ import Toast from "react-native-toast-message";
 import useSWR from "swr";
 import AnimeLoading from "../../components/AnimeLoading";
 import { Text } from "../../components/Text";
+import THEME from "../../components/useAppTheme";
 import { useStreak } from "../../context/StreakContext";
 import { useUser } from "../../context/UserContext";
 import { AdConfig } from "../../utils/AdConfig";
@@ -33,16 +33,7 @@ Notifications.setNotificationHandler({
 
 const API_BASE = "https://oreblogda.com/api";
 const fetcher = (url) => fetch(url).then((res) => res.json());
-// 🔹 FIXED: Added the missing THEME object
-const THEME = {
-    bg: "#0a0a0a",
-    card: "#111111",
-    accent: "#2563eb",
-    red: "#ef4444",
-    border: "#1e293b",
-    glowBlue: "rgba(37, 99, 235, 0.07)",
-    glowRed: "rgba(239, 68, 68, 0.05)"
-};
+
 async function getUserTotalPosts(deviceId) {
     if (!deviceId) return 0;
 
@@ -94,10 +85,9 @@ export default function AuthorDiaryDashboard() {
     const { streak } = useStreak();
     const fingerprint = user?.deviceId;
     const router = useRouter();
-    
+
     // Use refs to store listeners so they can be cleaned up properly
     const notificationListener = useRef();
-    const responseListener = useRef();
 
     // 1. Hook-based Ad Management
     const { isLoaded, isEarnedReward, isClosed, load, show } = useRewardedAd(AdConfig.rewarded, {
@@ -123,6 +113,7 @@ export default function AuthorDiaryDashboard() {
     const [canPostAgain, setCanPostAgain] = useState(false);
     const [rewardToken, setRewardToken] = useState(null);
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
+    const [pickedImage, setPickedImage] = useState(false);
 
     useEffect(() => {
         const fetchTotalPosts = async () => {
@@ -148,7 +139,7 @@ export default function AuthorDiaryDashboard() {
     const postsLast24h = todayPosts.length;
     const todayPost = todayPosts.length > 0 ? todayPosts[0] : null;
 
-    // 🔹 2. FIXED: Notification Permissions & Listener Cleanup
+    // 🔹 2. Notification Permissions (Handling logic moved to _layout.js)
     useEffect(() => {
         let isMounted = true;
 
@@ -164,34 +155,17 @@ export default function AuthorDiaryDashboard() {
 
         registerForPushNotificationsAsync();
 
-        // Listener for when a notification is received while app is foregrounded
-        notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-            
-        });
-
-        // Listener for when a user taps on a notification
-        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-            // Use a try-catch to ignore the navigation error if context isn't ready
-            try {
-                if (router) {
-                    router.push("/authordiary");
-                }
-            } catch (e) {
-                console.warn("Navigation attempted before context was ready");
-            }
-        });
+        // We only listen for foreground notifications here if needed, 
+        // but we DO NOT handle tap navigation here anymore.
+        notificationListener.current = Notifications.addNotificationReceivedListener(notification => { });
 
         return () => {
             isMounted = false;
-            // CORRECT CLEANUP: Call .remove() on the subscription object
             if (notificationListener.current) {
                 notificationListener.current.remove();
             }
-            if (responseListener.current) {
-                responseListener.current.remove();
-            }
         };
-    }, [router]);
+    }, []);
 
     // 3. Ad Lifecycle
     useEffect(() => {
@@ -248,7 +222,8 @@ export default function AuthorDiaryDashboard() {
                             title: "Cooldown Finished! 🎉",
                             body: "Your diary cooldown is over. You can post your next entry now!",
                             sound: true,
-                            data: { screen: "AuthorDiaryDashboard" }
+                            // 🔹 This data payload will be caught by the global handler in _layout.js
+                            data: { type: "open_diary" } 
                         },
                         trigger: {
                             type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -321,34 +296,70 @@ export default function AuthorDiaryDashboard() {
         setTimeout(() => setSelection({ start: cursorPosition, end: cursorPosition }), 10);
     };
 
-    const [pickedImage, setPickedImage] = useState(false);
     const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, quality: 0.7 });
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
+            allowsEditing: true,
+            quality: 0.5
+        });
+
         if (!result.canceled) {
-            setUploading(true);
-            setPickedImage(true)
             const selected = result.assets[0];
-            const formData = new FormData();
-            if (Platform.OS === 'web') {
-                const response = await fetch(selected.uri);
-                const blob = await response.blob();
-                formData.append("file", blob, selected.fileName || "upload.jpg");
-            } else {
-                formData.append("file", { uri: selected.uri, name: selected.fileName || (selected.type === "video" ? "video.mp4" : "photo.jpg"), type: selected.type === "video" ? "video/mp4" : "image/jpeg" });
+            const isVideo = selected.type === "video";
+            const currentLimit = isVideo ? 15 * 1024 * 1024 : 5 * 1024 * 1024;
+
+            if (selected.fileSize > currentLimit) {
+                const sizeInMB = (selected.fileSize / (1024 * 1024)).toFixed(2);
+                Alert.alert("File Too Large", `This ${selected.type} is ${sizeInMB}MB. Max: ${isVideo ? '15MB' : '5MB'}.`);
+                return;
             }
+
+            setUploading(true);
+
             try {
-                const res = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
-                const data = await res.json();
-                if (res.ok) {
-                    setMediaUrl(data.url); setMediaType(selected.type === "video" ? "video" : "image");
+                const signRes = await fetch(`${API_BASE}/upload/sign`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                const signData = await signRes.json();
+                if (!signRes.ok) throw new Error("Signature fetch failed");
+
+                const formData = new FormData();
+                formData.append("file", {
+                    uri: selected.uri,
+                    type: isVideo ? "video/mp4" : "image/jpeg",
+                    name: isVideo ? "video.mp4" : "photo.jpg",
+                });
+                formData.append("api_key", signData.apiKey);
+                formData.append("timestamp", signData.timestamp);
+                formData.append("signature", signData.signature);
+                formData.append("folder", "posts");
+
+                const cloudRes = await fetch(
+                    `https://api.cloudinary.com/v1_1/${signData.cloudName}/${isVideo ? "video" : "image"}/upload`,
+                    { method: "POST", body: formData }
+                );
+
+                const cloudData = await cloudRes.json();
+
+                if (cloudRes.ok) {
+                    let finalUrl = cloudData.secure_url;
+                    const transform = isVideo ? "q_auto,vc_auto" : "f_auto,q_auto";
+                    finalUrl = finalUrl.replace("/upload/", `/upload/${transform}/`);
+
+                    setMediaUrl(finalUrl);
+                    setMediaType(isVideo ? "video" : "image");
+                    setPickedImage(true);
                     Toast.show({ type: 'success', text1: 'Media attached successfully!' });
+                } else {
+                    throw new Error(cloudData.error?.message || "Cloudinary failed");
                 }
-                else throw new Error(data.message);
             } catch (err) {
+                console.error(err);
                 Alert.alert("Error", "Upload failed: " + err.message);
-                Toast.show({ type: 'error', text1: 'Media attachment failed!' })
+            } finally {
+                setUploading(false);
             }
-            finally { setUploading(false); }
         }
     };
 
@@ -516,7 +527,7 @@ export default function AuthorDiaryDashboard() {
         return <View className="px-4 py-1">{finalElements}</View>;
     };
 
-    if (contextLoading || submitting || uploading) {
+    if (contextLoading || submitting) {
         return <AnimeLoading message={submitting ? "Submitting" : uploading ? "Uploading" : "Loading"} subMessage="Fetching Otaku diary" />
     }
     return (
@@ -528,7 +539,7 @@ export default function AuthorDiaryDashboard() {
             <View style={{ position: 'absolute', bottom: -100, left: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowRed }} />
 
             <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
-                
+
                 {/* --- HEADER --- */}
                 <View className="flex-row justify-between items-end mt-4 mb-8 border-b border-gray-800 pb-6">
                     <View>
@@ -541,7 +552,7 @@ export default function AuthorDiaryDashboard() {
                         </Text>
                     </View>
                     <View className="bg-gray-900 px-3 py-1 rounded-lg border border-gray-800">
-                        <Text className="text-white font-bold text-xs">🔥 {streak?.streak || 0}</Text>
+                        <Text style={{ color: "#fff" }} className="text-white font-bold text-xs">🔥 {streak?.streak || 0}</Text>
                     </View>
                 </View>
 
@@ -616,13 +627,13 @@ export default function AuthorDiaryDashboard() {
                                 {/* Title */}
                                 <View>
                                     <Text className="text-[9px] font-black uppercase text-gray-500 mb-2 ml-1">Subject Title</Text>
-                                    <TextInput 
-                                        placeholder="ENTER POST TITLE..." 
-                                        value={title} 
-                                        onChangeText={setTitle} 
-                                        placeholderTextColor="#334155" 
-                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
-                                        className="w-full border-2 p-5 rounded-2xl text-white font-black text-lg" 
+                                    <TextInput
+                                        placeholder="ENTER POST TITLE..."
+                                        value={title}
+                                        onChangeText={setTitle}
+                                        placeholderTextColor="#334155"
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border, color: '#fff' }}
+                                        className="w-full border-2 p-5 rounded-2xl text-white font-black text-lg"
                                     />
                                 </View>
 
@@ -644,9 +655,8 @@ export default function AuthorDiaryDashboard() {
                                         onChangeText={(text) => setMessage(sanitizeMessage(text))}
                                         onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
                                         multiline
-                                        placeholderTextColor="#334155"
-                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border, textAlignVertical: 'top' }}
-                                        className="border-2 p-5 rounded-3xl text-white font-medium h-64"
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border, textAlignVertical: 'top', color: '#fff' }}
+                                        className="border-2 p-5 rounded-3xl font-medium h-64"
                                     />
                                 </View>
 
@@ -655,12 +665,12 @@ export default function AuthorDiaryDashboard() {
                                     <Text className="text-[9px] font-black uppercase text-gray-500 mb-2 ml-1">Archive Category</Text>
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                         {["News", "Memes", "Polls", "Gaming", "Review"].map((cat) => (
-                                            <TouchableOpacity 
-                                                key={cat} 
-                                                onPress={() => setCategory(cat)} 
+                                            <TouchableOpacity
+                                                key={cat}
+                                                onPress={() => setCategory(cat)}
                                                 className={`mr-2 px-6 py-3 rounded-xl border ${category === cat ? 'bg-blue-600 border-blue-600' : 'bg-gray-900 border-gray-800'}`}
                                             >
-                                                <Text className={`text-[10px] font-black uppercase ${category === cat ? "text-white" : "text-gray-500"}`}>{cat}</Text>
+                                                <Text style={{ color: "#fff" }} className={`text-[10px] font-black uppercase ${category === cat ? "text-white" : "text-gray-500"}`}>{cat}</Text>
                                             </TouchableOpacity>
                                         ))}
                                     </ScrollView>
@@ -668,17 +678,17 @@ export default function AuthorDiaryDashboard() {
 
                                 {/* Media & URL */}
                                 <View className="space-y-4">
-                                    <TextInput 
-                                        placeholder="External Uplink (URL)" 
-                                        value={mediaUrlLink} 
-                                        onChangeText={setMediaUrlLink} 
-                                        placeholderTextColor="#334155" 
-                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
-                                        className="border-2 p-5 rounded-2xl text-white font-bold" 
+                                    <TextInput
+                                        placeholder="External Uplink (URL)"
+                                        value={mediaUrlLink}
+                                        onChangeText={setMediaUrlLink}
+                                        placeholderTextColor="#334155"
+                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border, color: '#fff' }}
+                                        className="border-2 p-5 rounded-2xl text-white font-bold"
                                     />
-                                    
-                                    <TouchableOpacity 
-                                        onPress={pickImage} 
+
+                                    <TouchableOpacity
+                                        onPress={pickImage}
                                         style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
                                         className="p-8 rounded-3xl items-center border-2 border-dashed"
                                     >
@@ -703,12 +713,12 @@ export default function AuthorDiaryDashboard() {
                                         <View className="space-y-3">
                                             {pollOptions.map((option, i) => (
                                                 <View key={i} className="flex-row items-center gap-2 mb-1">
-                                                    <TextInput 
-                                                        placeholder={`Option ${i + 1}`} 
-                                                        value={option} 
-                                                        onChangeText={(t) => updatePollOption(t, i)} 
-                                                        style={{ backgroundColor: '#000', borderColor: THEME.border }}
-                                                        className="flex-1 border p-4 rounded-xl text-white font-bold" 
+                                                    <TextInput
+                                                        placeholder={`Option ${i + 1}`}
+                                                        value={option}
+                                                        onChangeText={(t) => updatePollOption(t, i)}
+                                                        style={{ backgroundColor: '#000', borderColor: THEME.border, color: '#fff' }}
+                                                        className="flex-1 border p-4 rounded-xl text-white font-bold"
                                                     />
                                                     {pollOptions.length > 2 && <TouchableOpacity onPress={() => removePollOption(i)}><Ionicons name="close-circle" size={24} color={THEME.red} /></TouchableOpacity>}
                                                 </View>
@@ -726,7 +736,7 @@ export default function AuthorDiaryDashboard() {
                                     disabled={submitting || uploading}
                                     className={`bg-blue-600 py-6 rounded-3xl items-center mt-6 mb-10 shadow-2xl ${submitting ? 'opacity-50' : ''}`}
                                 >
-                                    {submitting ? <ActivityIndicator color="white" /> : <Text className="text-white font-black italic uppercase tracking-[0.2em] text-lg">Transmit to Universe</Text>}
+                                    {submitting ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff" }} className="text-white font-black italic uppercase tracking-[0.2em] text-lg">Transmit to Universe</Text>}
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -735,5 +745,5 @@ export default function AuthorDiaryDashboard() {
             </ScrollView>
         </View>
     );
-    
+
 }
