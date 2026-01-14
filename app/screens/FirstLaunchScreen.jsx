@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -15,19 +16,11 @@ import {
 } from "react-native";
 import AnimeLoading from "../../components/AnimeLoading";
 import { Text } from "../../components/Text";
+import THEME from "../../components/useAppTheme";
 import { useUser } from "../../context/UserContext"; // Import this
 import { getFingerprint } from "../../utils/device";
-
 const { width } = Dimensions.get('window');
 
-const THEME = {
-  bg: "#0a0a0a",
-  card: "#111111",
-  accent: "#2563eb",
-  border: "#1e293b",
-  glowBlue: "rgba(37, 99, 235, 0.1)",
-  glowIndigo: "rgba(79, 70, 229, 0.08)"
-};
 export default function FirstLaunchScreen() {
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(true);
