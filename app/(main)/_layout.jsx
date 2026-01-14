@@ -18,6 +18,7 @@ import { useUser } from "../../context/UserContext";
 import "../globals.css";
 import CategoryNav from "./../../components/CategoryNav";
 import TopBar from "./../../components/Topbar";
+import VersionGuard from "./../../components/VersionGuard";
 
 export default function MainLayout() {
 	;
@@ -126,6 +127,7 @@ export default function MainLayout() {
 					<CategoryNav isDark={isDark} />
 				</Animated.View>
 			</SafeAreaView>
+			<VersionGuard />
 			{/* TABS */}
             <Tabs
                 screenOptions={{
