@@ -16,6 +16,7 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
+import Toast from "react-native-toast-message";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useSWRInfinite from "swr/infinite";
 import AnimeLoading from "../../components/AnimeLoading";
@@ -191,27 +192,58 @@ export default function MobileProfilePage() {
     };
 
     const handleDelete = (postId) => {
-        Alert.alert("Confirm Deletion", "Erase this transmission log?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Delete",
-                style: "destructive",
-                onPress: async () => {
-                    try {
-                        await fetch(`${API_BASE}/posts/delete`, {
-                            method: "DELETE",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ postId, fingerprint: user?.deviceId }),
-                        });
+    Alert.alert("Confirm Deletion", "Erase this transmission log?", [
+        { text: "Cancel", style: "cancel" },
+        {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+                // Show a loading toast immediately
+                Toast.show({
+                    type: 'info',
+                    text1: 'Processing...',
+                    text2: 'Attempting to delete post',
+                    autoHide: false
+                });
+
+                try {
+                    const response = await fetch(`${API_BASE}/posts/delete`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ postId, fingerprint: user?.deviceId }),
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // Success path
                         mutate();
                         setTotalPosts(prev => prev - 1);
-                    } catch (err) {
-                        Alert.alert("Error", "Failed to delete.");
+                        Toast.show({
+                            type: 'success',
+                            text1: 'Deleted',
+                            text2: data.message || 'Post removed successfully'
+                        });
+                    } else {
+                        // Backend blocked deletion (e.g., status was pending/rejected)
+                        Toast.show({
+                            type: 'error',
+                            text1: 'Deletion Blocked',
+                            text2: data.message || 'This post cannot be deleted.'
+                        });
                     }
-                },
+                } catch (err) {
+                    console.error("Delete Error:", err);
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Connection Error',
+                        text2: 'Failed to reach the server.'
+                    });
+                }
             },
-        ]);
-    };
+        },
+    ]);
+};
 
     const listHeader = useMemo(() => (
         <View className="px-6">
