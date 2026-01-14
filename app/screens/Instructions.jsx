@@ -2,17 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Dimensions, SafeAreaView, ScrollView, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../components/Text';
-
+import THEME from '../../components/useAppTheme';
 const { width } = Dimensions.get('window');
 
-const THEME = {
-  bg: "#0a0a0a",
-  card: "#111111",
-  accent: "#2563eb",
-  border: "#1e293b",
-  glowBlue: "rgba(37, 99, 235, 0.08)",
-  glowGreen: "rgba(16, 185, 129, 0.05)"
-};
 
 export default function Instructions() {
   const router = useRouter();
@@ -142,15 +134,10 @@ export default function Instructions() {
             </View>
             <View 
                style={{ borderBottomColor: THEME.border }}
-               className="flex-row justify-between border-b pb-3 mb-3"
+               className="flex-row justify-between pb-3 mb-3"
             >
               <Text className="text-blue-500 font-mono text-[11px] font-bold">[source="link" text:Text]</Text>
               <Text className="text-gray-600 font-black uppercase text-[9px]">Source Link</Text>
-            </View>
-
-            <View className="flex-row justify-between">
-              <Text className="text-blue-500 font-mono text-[11px] font-bold">[br]</Text>
-              <Text className="text-gray-600 font-black uppercase text-[9px]">Spacer Protocol</Text>
             </View>
           </View>
         </View>
