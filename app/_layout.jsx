@@ -21,7 +21,6 @@ SplashScreen.preventAutoHideAsync();
 const FIRST_AD_DELAY_MS = 120000; // 2 minute delay after app opens
 const COOLDOWN_MS = 480000; // 8 minutes between subsequent ads
 
-// We set the lastShownTime to "now minus (cooldown - first delay)" 
 let lastShownTime = Date.now() - (COOLDOWN_MS - FIRST_AD_DELAY_MS);
 let interstitial = null;
 
@@ -73,6 +72,9 @@ function RootLayoutContent() {
     const { user } = useUser();
     const [isSyncing, setIsSyncing] = useState(true);
     const appState = useRef(AppState.currentState);
+    
+    // Safety guard to prevent double-navigation from notifications
+    const lastProcessedNotificationId = useRef(null);
 
     useEffect(() => {
         loadAppOpenAd();
@@ -153,25 +155,34 @@ function RootLayoutContent() {
                 }
             }
 
-            // Always include loading animation as requested
+            // Always include loading animation for 1.5s
             setTimeout(() => setIsSyncing(false), 1500);
         }
 
         performSync();
     }, [fontsLoaded, user?.deviceId]);
 
-    // 3. Notification Interaction (Cold Start + Background/Foreground)
+    // 3. Notification Interaction (Fixed for Cold Start & Deep Links)
     useEffect(() => {
         if (isSyncing) return;
 
         const handleNotificationResponse = (response) => {
-            const data = response.notification.request.content.data;
+            const notificationId = response?.notification?.request?.identifier;
+            
+            // Prevent processing the same notification interaction twice
+            if (lastProcessedNotificationId.current === notificationId) return;
+            lastProcessedNotificationId.current = notificationId;
+
+            const data = response?.notification?.request?.content?.data;
+            if (!data) return;
+
             console.log("🔔 Notification Data Payload:", JSON.stringify(data));
 
             const targetId = data?.postId || data?.body?.postId || data?.id;
             const type = data?.type;
 
-            if (targetId) {
+            // Ensure targetId is valid and not an empty object/string
+            if (targetId && typeof targetId !== 'object') {
                 console.log("🚀 Navigating to Post ID:", targetId);
                 router.push({
                     pathname: "/post/[id]",
@@ -183,14 +194,14 @@ function RootLayoutContent() {
             }
         };
 
-        // Check if the app was opened by a notification (Cold Start)
+        // Handle cold start
         Notifications.getLastNotificationResponseAsync().then(response => {
             if (response) {
                 handleNotificationResponse(response);
             }
         });
 
-        // Listen for interactions while app is open/backgrounded
+        // Handle background/foreground taps
         const responseSub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
 
         return () => responseSub.remove();
@@ -202,6 +213,7 @@ function RootLayoutContent() {
         }
     }, [fontsLoaded, fontError]);
 
+    // --- LOADING VIEW ---
     if (!fontsLoaded || isSyncing) {
         return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />
     }
