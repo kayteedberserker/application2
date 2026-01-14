@@ -14,11 +14,11 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimeLoading from "../../components/AnimeLoading";
+import UpdateHandler from "../../components/UpdateModal";
 import { useUser } from "../../context/UserContext";
 import "../globals.css";
 import CategoryNav from "./../../components/CategoryNav";
 import TopBar from "./../../components/Topbar";
-import VersionGuard from "./../../components/VersionGuard";
 
 export default function MainLayout() {
 	;
@@ -110,7 +110,7 @@ export default function MainLayout() {
 		<>
 			{/* STATUS BAR */}
 			<StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
-
+			
 			{/* HEADER */}
 			<SafeAreaView
 				style={{
@@ -127,7 +127,7 @@ export default function MainLayout() {
 					<CategoryNav isDark={isDark} />
 				</Animated.View>
 			</SafeAreaView>
-			<VersionGuard />
+			<UpdateHandler />
 			{/* TABS */}
             <Tabs
                 screenOptions={{
