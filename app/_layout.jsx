@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { useFonts } from "expo-font";
+import * as Linking from 'expo-linking'; // 👈 Added for Deep Linking
 import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -77,6 +78,20 @@ function RootLayoutContent() {
     const appState = useRef(AppState.currentState);
     const lastProcessedNotificationId = useRef(null);
     const hasCheckedColdStart = useRef(false);
+
+    // --- DEEP LINKING HANDLER ---
+    const url = Linking.useURL(); // 👈 Catches incoming links
+
+    useEffect(() => {
+        if (url && !isSyncing && !isUpdating) {
+            const { path, queryParams } = Linking.parse(url);
+            if (path && path !== "/") {
+                // Remove leading slash if present to avoid double slash issues
+                const targetPath = path.startsWith('/') ? path : `/${path}`;
+                router.replace(targetPath);
+            }
+        }
+    }, [url, isSyncing, isUpdating]);
 
     // --- 0. EAS UPDATE GUARDIAN ---
     useEffect(() => {
@@ -187,7 +202,7 @@ function RootLayoutContent() {
             }
             setTimeout(() => setIsSyncing(false), 1500);
         }
-        performSync();
+    performSync();
     }, [fontsLoaded, user?.deviceId, isUpdating]);
 
     // --- 4. Notification Interaction ---
@@ -233,6 +248,7 @@ function RootLayoutContent() {
         }
     }, [fontsLoaded, fontError]);
 
+    // --- LOADING VIEW (FOR FONTS, ACCOUNT SYNC, OR EAS UPDATES) ---
     if (!fontsLoaded || isSyncing || isUpdating) {
         return (
             <AnimeLoading 
