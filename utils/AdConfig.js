@@ -1,7 +1,7 @@
 import { TestIds } from 'react-native-google-mobile-ads';
 
 // Set this to true when you are ready to go live
-const IS_PRODUCTION = true
+const IS_PRODUCTION = false
 
 export const AdConfig = {
   banner: IS_PRODUCTION
