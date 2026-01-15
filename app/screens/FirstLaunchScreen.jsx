@@ -224,7 +224,7 @@ export default function FirstLaunchScreen() {
           ) : (
             <>
               <Ionicons name={isRecoveryMode ? "git-network-outline" : "power"} size={18} color="white" style={{ marginRight: 10 }} />
-              <RNText style={{ color: "white", fontSize: 16, fontWeight: "900", fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: 2 }}>
+              <RNText style={{ color: THEME.text, fontSize: 16, fontWeight: "900", fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: 2 }}>
                 {isRecoveryMode ? "Sync Account" : "Establish Link"}
               </RNText>
             </>
