@@ -70,12 +70,12 @@ const resolveUserRank = (totalPosts) => {
                             "🛡️";
 
     const postLimit =
-        rankTitle === "Master_Writer" ? 3 :
-            rankTitle === "Elite_Writer" ? 3 :
-                rankTitle === "Senior_Writer" ? 2 :
-                    rankTitle === "Novice_Writer" ? 2 :
-                        rankTitle === "Senior_Researcher" ? 1 :
-                            1;
+        rankTitle === "Master_Writer" ? 10 :
+            rankTitle === "Elite_Writer" ? 7 :
+                rankTitle === "Senior_Writer" ? 7 :
+                    rankTitle === "Novice_Writer" ? 5 :
+                        rankTitle === "Senior_Researcher" ? 5 :
+                            3;
 
     return { rankTitle, rankIcon, postLimit };
 };
