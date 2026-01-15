@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons"; // 👈 Added Feather
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -41,20 +41,20 @@ export default function MobileProfilePage() {
     const [preview, setPreview] = useState(null);
     const [imageFile, setImageFile] = useState(null);
     const [isUpdating, setIsUpdating] = useState(false);
-    const [totalPosts, setTotalPosts] = useState(0); // For ranking logic
+    const [totalPosts, setTotalPosts] = useState(0); 
 
     // Animations
     const scanAnim = useRef(new Animated.Value(0)).current;
     const loadingAnim = useRef(new Animated.Value(0)).current;
     const [copied, setCopied] = useState(false);
 
-const copyToClipboard = async () => {
-    if (user?.deviceId) {
-        await Clipboard.setStringAsync(user.deviceId);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
-    }
-};
+    const copyToClipboard = async () => {
+        if (user?.deviceId) {
+            await Clipboard.setStringAsync(user.deviceId);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000); 
+        }
+    };
 
     useEffect(() => {
         Animated.loop(
@@ -208,7 +208,6 @@ const copyToClipboard = async () => {
                 text: "Delete",
                 style: "destructive",
                 onPress: async () => {
-                    // Show a loading toast immediately
                     Toast.show({
                         type: 'info',
                         text1: 'Processing...',
@@ -226,7 +225,6 @@ const copyToClipboard = async () => {
                         const data = await response.json();
 
                         if (response.ok) {
-                            // Success path
                             mutate();
                             setTotalPosts(prev => prev - 1);
                             Toast.show({
@@ -235,7 +233,6 @@ const copyToClipboard = async () => {
                                 text2: data.message || 'Post removed successfully'
                             });
                         } else {
-                            // Backend blocked deletion (e.g., status was pending/rejected)
                             Toast.show({
                                 type: 'error',
                                 text1: 'Deletion Blocked',
@@ -262,7 +259,6 @@ const copyToClipboard = async () => {
                 <Text className="text-3xl font-black italic tracking-tighter uppercase dark:text-white">Player Profile</Text>
             </View>
 
-            {/* AVATAR SECTION */}
             <View className="items-center mb-10">
                 <View className="relative">
                     <Animated.View
@@ -287,7 +283,6 @@ const copyToClipboard = async () => {
                     <Text className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em] mt-1">Class: {rankTitle}</Text>
                 </View>
 
-                {/* RANKING PROGRESS BAR */}
                 <View className="mt-8 w-full px-4">
                     <View className="flex-row justify-between items-end mb-2">
                         <View className="flex-row items-center gap-2">
@@ -307,7 +302,6 @@ const copyToClipboard = async () => {
                 </View>
             </View>
 
-            {/* HUD INPUTS */}
             <View className="space-y-6">
                 <View className="space-y-1">
                     <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Account ID</Text>
@@ -317,42 +311,42 @@ const copyToClipboard = async () => {
                 </View>
 
                 <View className="space-y-1 mt-4">
-    <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">
-        Neural Uplink - <Text className="text-[9px] font-black tracking-widest text-gray-500">Used for account recovery/removal</Text>
-    </Text>
-    
-    <View 
-        className="bg-gray-50 dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 p-4 rounded-2xl flex-row justify-between items-center"
-        style={{ shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: copied ? 0.2 : 0, shadowRadius: 10 }}
-    >
-        <View className="flex-1 mr-4">
-            <Text 
-                numberOfLines={1} 
-                ellipsizeMode="middle" 
-                className="text-xs font-bold text-gray-500 dark:text-gray-400 font-mono"
-            >
-                {user?.deviceId || "SEARCHING..."}
-            </Text>
-        </View>
+                    <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">
+                        Neural Uplink - <Text className="text-[9px] font-black tracking-widest text-gray-500">Used for account recovery/removal</Text>
+                    </Text>
+                    
+                    <View 
+                        className="bg-gray-50 dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 p-4 rounded-2xl flex-row justify-between items-center"
+                        style={{ shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: copied ? 0.2 : 0, shadowRadius: 10 }}
+                    >
+                        <View className="flex-1 mr-4">
+                            <Text 
+                                numberOfLines={1} 
+                                ellipsizeMode="middle" 
+                                className="text-xs font-bold text-gray-500 dark:text-gray-400 font-mono"
+                            >
+                                {user?.deviceId || "SEARCHING..."}
+                            </Text>
+                        </View>
 
-        <Pressable 
-            onPress={copyToClipboard}
-            className={`p-2 rounded-xl ${copied ? 'bg-green-500/10' : 'bg-blue-500/10'}`}
-        >
-            <Feather 
-                name={copied ? "check" : "copy"} 
-                size={16} 
-                color={copied ? "#22c55e" : "#3b82f6"} 
-            />
-        </Pressable>
-    </View>
-    
-    {copied && (
-        <Text className="text-[8px] font-black text-green-500 uppercase tracking-widest mt-1 ml-1">
-            ID Copied to Clipboard
-        </Text>
-    )}
-</View>
+                        <Pressable 
+                            onPress={copyToClipboard}
+                            className={`p-2 rounded-xl ${copied ? 'bg-green-500/10' : 'bg-blue-500/10'}`}
+                        >
+                            <Feather 
+                                name={copied ? "check" : "copy"} 
+                                size={16} 
+                                color={copied ? "#22c55e" : "#3b82f6"} 
+                            />
+                        </Pressable>
+                    </View>
+                    
+                    {copied && (
+                        <Text className="text-[8px] font-black text-green-500 uppercase tracking-widest mt-1 ml-1">
+                            ID Copied to Clipboard
+                        </Text>
+                    )}
+                </View>
 
                 <View className="space-y-1 mt-4">
                     <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Biography / Lore</Text>
@@ -389,7 +383,7 @@ const copyToClipboard = async () => {
                 <View className="h-[1px] flex-1 bg-gray-100 dark:bg-gray-800" />
             </View>
         </View>
-    ), [user, preview, description, isUpdating, spin, translateX, totalPosts]);
+    ), [user, preview, description, isUpdating, spin, translateX, totalPosts, copied]); // 👈 Added 'copied' here
 
     if (contextLoading) {
         return <AnimeLoading message="Syncing Profile" subMessage="Please wait..." />;
@@ -398,7 +392,6 @@ const copyToClipboard = async () => {
     return (
         <View className="flex-1 bg-white dark:bg-[#0a0a0a]" style={{ paddingTop: insets.top }}>
             <AppOnboarding />
-            {/* Ambient background deco */}
             <View className="absolute top-0 right-0 w-80 h-80 bg-blue-600/5 rounded-full" pointerEvents="none" />
             <View className="absolute bottom-0 left-0 w-60 h-60 bg-purple-600/5 rounded-full" pointerEvents="none" />
 
