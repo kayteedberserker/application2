@@ -624,6 +624,13 @@ export default function AuthorDiaryDashboard() {
                             <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="mb-6 rounded-3xl border-2 p-2">{renderPreviewContent()}</View>
                         ) : (
                             <View className="space-y-6">
+                                 <Link href={"/screens/Instructions"} asChild>
+                            <TouchableOpacity className="mt-4">
+                                <Text className="text-gray-600 font-bold uppercase tracking-tighter text-xs">
+                                    Don't understand how to go about this? Check out this page for clear explanation
+                                </Text>
+                            </TouchableOpacity>
+                        </Link>
                                 {/* Title */}
                                 <View>
                                     <Text className="text-[9px] font-black uppercase text-gray-500 mb-2 ml-1">Subject Title</Text>
