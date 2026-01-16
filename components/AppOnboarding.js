@@ -21,64 +21,64 @@ export default function AppOnboarding() {
     const [step, setStep] = useState(0);
 
     const features = [
-        {
-            title: "NEURAL_LINK_START",
-            desc: "Welcome to Oreblogda. You've just entered the ultimate hub for Anime and Gaming enthusiasts. Synchronize your profile to start sharing intel with the collective.",
-            icon: "sparkles",
-            color: "#6366f1",
-            intel: "SYSTEM: INITIALIZING"
-        },
-        {
-            title: "INTEL_SUBMISSION",
-            desc: "Submit your posts to the archives. Each entry undergoes manual verification by the THE SYSTEM. You'll be notified once your intel is APPROVED or REJECTED.",
-            icon: "cloud-upload",
-            color: "#60a5fa",
-            intel: "PROTOCOL: DATA_ENTRY"
-        },
-        {
-            title: "STREAK_STABILITY",
-            desc: "Maintain your daily flame ⚡. Your streak increases with every post—approved or rejected with a 24 hour cooldown. THE SYSTEM requires activity every 48hrs or your streak resets.",
-            icon: "#f59e0b",
-            icon: "flame",
-            color: "#f59e0b",
-            intel: "STATUS: CONSISTENCY_CHECK"
-        },
-        {
-            title: "PROGRESSION_PATH",
-            desc: "Rise through the ranks: \n• 0+ Posts: Novice Researcher 🛡️\n• 50+ Posts: Novice Writer ⚔️\n• 150+ Posts: Elite Writer 💎\n• 200+ Posts: Master Writer 👑",
-            icon: "trending-up",
-            color: "#10b981",
-            intel: "DATA: RANK_LOGIC"
-        },
-        {
-            title: "COMMAND_CENTER",
-            desc: "The top 200 operatives are featured on the Global Leaderboard. Earn your MEDAL by staying consistent. High-ranking writers gain ultimate prestige.",
-            icon: "medal",
-            color: "#fbbf24",
-            intel: "RANKING: GLOBAL_SQUAD"
-        },
-        {
-            title: "CORE_MANAGEMENT",
-            desc: "Visit your PROFILE to manage your published documents. Track your status, review your history, and monitor your progress toward the next rank level.",
-            icon: "finger-print",
-            color: "#a78bfa",
-            intel: "ACCESS: PERSONAL_VAULT"
-        },
-        {
-            title: "DATA_INTEGRITY",
-            desc: "Zero tolerance for SPAM or corrupted data. Ensure your posts add value to the archives. Violating protocol may result in streak resets.",
-            icon: "shield-checkmark",
-            color: "#f87171",
-            intel: "SECURITY: ANTI_SPAM"
-        },
-        {
-            title: "SYSTEM_ONLINE",
-            desc: "All systems are green. Your neural link to Oreblogda is established. Welcome to the frontline, Operative. The archives are waiting for your contribution.",
-            icon: "checkmark-done-circle",
-            color: "#10b981",
-            intel: "FINAL_INIT: ACCESS_GRANTED"
-        }
-    ];
+    {
+        title: "SUMMONING_COMPLETE",
+        desc: "You've been summoned to the world of Oreblogda! Whether you're a wandering Shinobi or a top-tier Gamer, synchronize your soul to start sharing your journey with the guild.",
+        icon: "sparkles",
+        color: "#6366f1",
+        intel: "STATUS: HERO_AWAKENED"
+    },
+    {
+        title: "MANUSCRIPT_SUBMISSION",
+        desc: "Submit your scrolls to the High Council. Every chapter is reviewed by the Sensei. You'll receive a message once your tale is officially ARCHIVED or marked as FILLER.",
+        icon: "cloud-upload",
+        color: "#60a5fa",
+        intel: "PROTOCOL: SCROLL_SYNC"
+    },
+    {
+        title: "SPIRIT_STREAK",
+        desc: "Keep your Inner Fire burning! Your Power Level rises with every post. Don't let your Mana drop—if you stop training for 48 hours, your Spirit Streak will reset to zero.",
+        icon: "flame",
+        color: "#f59e0b",
+        intel: "MANA: CONSISTENCY_CHECK"
+    },
+    {
+        title: "LEVEL_UP_ARC",
+        desc: "Climb the ranks and unlock your true potential: \n• E-Rank: Novice Researcher 🛡️\n• C-Rank: Novice Writer ⚔️\n• A-Rank: Elite Writer 💎\n• S-Rank: Master Writer 👑",
+        icon: "trending-up",
+        color: "#10b981",
+        intel: "RANK: ADVENTURER_LOG"
+    },
+    {
+        title: "GUILD_LEADERBOARD",
+        desc: "The top 200 legends are etched into the Hall of Fame. Earn your Title by staying consistent. High-ranking masters gain ultimate prestige across the entire realm.",
+        icon: "medal",
+        color: "#fbbf24",
+        intel: "HALL: TOP_OPERATIVES"
+    },
+    {
+        title: "PERSONAL_GRIMOIRE",
+        desc: "Visit your Grimoire to manage your recorded history. Track your progress, review your past arcs, and monitor your path toward becoming an S-Rank legend.",
+        icon: "finger-print",
+        color: "#a78bfa",
+        intel: "VAULT: SOUL_RECORD"
+    },
+    {
+        title: "JUDGMENT_GATE",
+        desc: "Zero tolerance for Cursed Spirits or Spam. Ensure your contributions add value to the archives. Breaking the Ninja Code may result in your streak being sealed.",
+        icon: "shield-checkmark",
+        color: "#f87171",
+        intel: "COUNCIL: ANTI_CURSE"
+    },
+    {
+        title: "ADVENTURE_AWAITS",
+        desc: "Your Mana is full. Your connection to Oreblogda is established. The world is waiting for your story, Hero. Go beyond, Plus Ultra!",
+        icon: "checkmark-done-circle",
+        color: "#10b981",
+        intel: "FINAL_INIT: GO_BEYOND"
+    }
+];
+
 
     useEffect(() => {
         checkOnboardingStatus();
