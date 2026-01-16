@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { useFonts } from "expo-font";
-import * as Linking from 'expo-linking'; // 👈 Added for Deep Linking
+import * as Linking from 'expo-linking'; 
 import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -77,23 +77,23 @@ function RootLayoutContent() {
     
     const appState = useRef(AppState.currentState);
     const lastProcessedNotificationId = useRef(null);
-    const hasCheckedColdStart = useRef(false);
+    const hasHandledRedirect = useRef(false); // 👈 Tracks if we navigated already
 
-    // --- DEEP LINKING HANDLER ---
-    const url = Linking.useURL(); // 👈 Catches incoming links
+    // --- 1. DEEP LINKING HANDLER ---
+    const url = Linking.useURL(); 
 
     useEffect(() => {
-        if (url && !isSyncing && !isUpdating) {
-            const { path, queryParams } = Linking.parse(url);
+        if (url && !isSyncing && !isUpdating && !hasHandledRedirect.current) {
+            const { path } = Linking.parse(url);
             if (path && path !== "/") {
-                // Remove leading slash if present to avoid double slash issues
                 const targetPath = path.startsWith('/') ? path : `/${path}`;
-                router.replace(targetPath);
+                hasHandledRedirect.current = true;
+                setTimeout(() => router.replace(targetPath), 500);
             }
         }
     }, [url, isSyncing, isUpdating]);
 
-    // --- 0. EAS UPDATE GUARDIAN ---
+    // --- 2. EAS UPDATE GUARDIAN ---
     useEffect(() => {
         async function onFetchUpdateAsync() {
             if (__DEV__) return; 
@@ -119,7 +119,7 @@ function RootLayoutContent() {
         "SpaceGroteskBold": require("../assets/fonts/SpaceGrotesk.ttf"),
     });
 
-    // --- 1 & 2. CONSOLIDATED AD INITIALIZATION ---
+    // --- 3. AD INITIALIZATION ---
     useEffect(() => {
         if (Platform.OS === 'web') return;
 
@@ -127,18 +127,11 @@ function RootLayoutContent() {
             try {
                 const mobileAds = require('react-native-google-mobile-ads').default;
                 const { InterstitialAd } = require('react-native-google-mobile-ads');
-
-                // Wait for SDK to be ready
                 await mobileAds().initialize();
-                
-                // 1. Setup App Open Ad
                 loadAppOpenAd();
-
-                // 2. Setup Interstitial Ad
                 interstitial = InterstitialAd.createForAdRequest(AdConfig.interstitial);
                 interstitial.load();
 
-                // Listeners
                 const adTriggerSub = DeviceEventEmitter.addListener("tryShowInterstitial", () => {
                     const now = Date.now();
                     if (interstitial?.loaded && (now - lastShownTime > COOLDOWN_MS)) {
@@ -161,17 +154,14 @@ function RootLayoutContent() {
                 console.log("AdMob Setup Error:", err);
             }
         };
-
         setupAds();
 
-        // App State Listener for App Open Ad
         const sub = AppState.addEventListener('change', nextState => {
             if (appState.current.match(/inactive|background/) && nextState === 'active') {
                 showAppOpenAd();
             }
             appState.current = nextState;
         });
-
         return () => sub.remove();
     }, []);
 
@@ -179,22 +169,17 @@ function RootLayoutContent() {
         refreshStreak();
     }, [pathname, refreshStreak]);
 
-    // --- 3. Account Sync & Push Token ---
+    // --- 4. Account Sync & Push Token ---
     useEffect(() => {
         async function performSync() {
             if (!fontsLoaded || isUpdating) return; 
-
             const token = await registerForPushNotificationsAsync();
-
             if (token && user?.deviceId) {
                 try {
                     await fetch("https://oreblogda.com/api/users/update-push-token", {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            deviceId: user.deviceId,
-                            pushToken: token
-                        })
+                        body: JSON.stringify({ deviceId: user.deviceId, pushToken: token })
                     });
                 } catch (err) {
                     console.log("Token sync failed:", err);
@@ -202,10 +187,10 @@ function RootLayoutContent() {
             }
             setTimeout(() => setIsSyncing(false), 1500);
         }
-    performSync();
+        performSync();
     }, [fontsLoaded, user?.deviceId, isUpdating]);
 
-    // --- 4. Notification Interaction ---
+    // --- 5. NOTIFICATION INTERACTION (STRENGTHENED) ---
     useEffect(() => {
         if (isSyncing || isUpdating) return;
 
@@ -217,26 +202,29 @@ function RootLayoutContent() {
             const data = response?.notification?.request?.content?.data;
             if (!data) return;
 
+            // 🛠️ EXTRACTING POST ID (Checking all possible nestings)
             const targetId = data?.postId || data?.body?.postId || data?.id;
             const type = data?.type || data?.body?.type;
 
-            if (targetId && typeof targetId !== 'object') {
-                router.push({
-                    pathname: "/post/[id]",
-                    params: { id: targetId }
-                });
+            if (targetId) {
+                hasHandledRedirect.current = true;
+                setTimeout(() => {
+                    // Force path as string
+                    router.push(`/post/${targetId}`);
+                }, 800);
             } 
             else if (type === "open_diary" || type === "diary") {
-                router.push("/authordiary");
+                hasHandledRedirect.current = true;
+                setTimeout(() => router.push("/authordiary"), 800);
             }
         };
 
-        if (!hasCheckedColdStart.current) {
-            Notifications.getLastNotificationResponseAsync().then(response => {
-                if (response) handleNotificationResponse(response);
-            });
-            hasCheckedColdStart.current = true;
-        }
+        // Cold Start Check
+        Notifications.getLastNotificationResponseAsync().then(response => {
+            if (response && !hasHandledRedirect.current) {
+                handleNotificationResponse(response);
+            }
+        });
 
         const responseSub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
         return () => responseSub.remove();
@@ -248,7 +236,6 @@ function RootLayoutContent() {
         }
     }, [fontsLoaded, fontError]);
 
-    // --- LOADING VIEW (FOR FONTS, ACCOUNT SYNC, OR EAS UPDATES) ---
     if (!fontsLoaded || isSyncing || isUpdating) {
         return (
             <AnimeLoading 
