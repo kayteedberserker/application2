@@ -493,12 +493,12 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                             <Text className="font-[900] uppercase tracking-widest text-blue-600 dark:text-blue-400 text-[14px]">
                                 {author.name || "Unknown Entity"} - <Ionicons name="flame" size={12} color={author.streak < 0 ? "#ef4444" : "#f97316"} />{author.streak > 0 ? `${author.streak}` : "0"}
                             </Text>
-                            <Text className="text-[11px] mt-1 font-bold uppercase tracking-tighter">{userRank.rankName || "Verified Author"}</Text>
+                            <Text className="text-[11px] mt-1 text-gray-900 dark:text-white font-bold uppercase tracking-tighter">{userRank.rankName || "Verified Author"}</Text>
                         </View>
                     </Pressable>
                     <View className="flex-row items-center gap-2 bg-gray-50 dark:bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-100 dark:border-gray-700">
                         <View className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                        <Text className="text-[10px] font-black uppercase tracking-widest">{formatViews(totalViews)}</Text>
+                        <Text className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-widest">{formatViews(totalViews)}</Text>
                     </View>
                 </View>
 
