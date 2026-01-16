@@ -170,8 +170,8 @@ export default function FirstLaunchScreen() {
         
         {isRecoveryMode ? (
             <TextInput
-                style={{ backgroundColor: THEME.card, borderColor: '#a855f7' }}
-                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 text-white font-black italic uppercase"
+                style={{ backgroundColor: THEME.card, borderColor: '#a855f7', color: THEME.text}}
+                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic uppercase"
                 placeholder="PASTE DEVICE ID HERE"
                 placeholderTextColor="#334155"
                 autoCapitalize="none"
@@ -181,9 +181,9 @@ export default function FirstLaunchScreen() {
             />
         ) : (
             <TextInput
-                style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                style={{ backgroundColor: THEME.card, borderColor: THEME.border, color: THEME.text }}
                 className="w-full border-2 rounded-2xl px-5 py-5 mb-4 text-white font-black italic uppercase"
-                placeholder="ENTER CALLSIGN (E.G. ANIMELOVER)"
+                placeholder="ENTER USERNAME OR ANY NAME 😗😗(E.G. ANIMELOVER)"
                 placeholderTextColor="#334155"
                 autoCapitalize="none"
                 value={username}
