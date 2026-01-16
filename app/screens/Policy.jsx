@@ -11,12 +11,12 @@ export default function PrivacyPolicy() {
   const Section = ({ title, content }) => (
     <View className="mb-10">
       <View className="flex-row items-center mb-4">
-        <View className="h-[2px] w-4 bg-blue-600 mr-3" />
-        <Text className="text-sm font-black uppercase italic text-white tracking-widest">
+        <View style={{ backgroundColor: THEME.accent }} className="h-[2px] w-4 mr-3" />
+        <Text style={{ color: THEME.text }} className="text-sm font-black uppercase italic tracking-widest">
           {title}
         </Text>
       </View>
-      <Text className="text-gray-500 leading-7 text-[14px] font-medium px-1">
+      <Text style={{ color: THEME.textSecondary || '#64748b' }} className="leading-7 text-[14px] font-medium px-1">
         {content}
       </Text>
     </View>
@@ -40,8 +40,8 @@ export default function PrivacyPolicy() {
             <Ionicons name="chevron-back" size={24} color={THEME.accent} />
           </TouchableOpacity>
           <View className="ml-5">
-            <Text className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-600 mb-1">Legal Protocol</Text>
-            <Text className="text-3xl font-black italic uppercase text-white">Privacy Policy</Text>
+            <Text style={{ color: THEME.accent }} className="text-[10px] font-black uppercase tracking-[0.3em] mb-1">Legal Protocol</Text>
+            <Text style={{ color: THEME.text }} className="text-3xl font-black italic uppercase">Privacy Policy</Text>
           </View>
         </View>
 
@@ -50,13 +50,13 @@ export default function PrivacyPolicy() {
           style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
           className="self-start px-5 py-2 rounded-xl mb-10 border-2"
         >
-          <Text className="text-blue-500 text-[9px] font-black uppercase tracking-[0.2em]">
+          <Text style={{ color: THEME.accent }} className="text-[9px] font-black uppercase tracking-[0.2em]">
             Last Sync: October 2025 // Secure
           </Text>
         </View>
 
-        <Text className="text-gray-400 mb-12 leading-7 text-[15px] font-medium">
-          Welcome to <Text className="font-black italic text-white uppercase">Oreblogda</Text>. 
+        <Text style={{ color: THEME.textSecondary || '#94a3b8' }} className="mb-12 leading-7 text-[15px] font-medium">
+          Welcome to <Text style={{ color: THEME.text }} className="font-black italic uppercase">Oreblogda</Text>. 
           Your privacy is a core directive. This protocol explains how we collect, process, and encrypt your 
           data within our mobile ecosystem.
         </Text>
@@ -102,19 +102,22 @@ export default function PrivacyPolicy() {
           style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
           className="mt-6 p-10 rounded-[45px] border-2 items-center"
         >
-          <View className="w-12 h-12 bg-blue-500/10 rounded-full items-center justify-center mb-4">
+          <View 
+            style={{ backgroundColor: THEME.accent + '15' }} 
+            className="w-12 h-12 rounded-full items-center justify-center mb-4"
+          >
             <Ionicons name="mail-outline" size={24} color={THEME.accent} />
           </View>
-          <Text className="text-white font-black italic uppercase text-lg mb-3 text-center">Inquiry Channel</Text>
-          <Text className="text-gray-500 text-center text-sm leading-6 font-medium">
+          <Text style={{ color: THEME.text }} className="font-black italic uppercase text-lg mb-3 text-center">Inquiry Channel</Text>
+          <Text style={{ color: THEME.textSecondary || '#64748b' }} className="text-center text-sm leading-6 font-medium">
             For questions regarding this protocol, initiate contact at:{"\n"}
-            <Text className="text-blue-500 font-bold uppercase tracking-widest mt-2">oreblogda@gmail.com</Text>
+            <Text style={{ color: THEME.accent }} className="font-bold uppercase tracking-widest mt-2">oreblogda@gmail.com</Text>
           </Text>
         </View>
 
         <View className="items-center mt-16 mb-10">
-            <View className="h-[1px] w-12 bg-gray-800 mb-4" />
-            <Text className="text-gray-800 font-black text-[8px] uppercase tracking-[0.5em]">
+            <View style={{ backgroundColor: THEME.border }} className="h-[1px] w-12 mb-4" />
+            <Text style={{ color: THEME.textSecondary || '#334155' }} className="font-black text-[8px] uppercase tracking-[0.5em]">
                 Secure Document // Auth Code: PRIV-2025
             </Text>
         </View>
