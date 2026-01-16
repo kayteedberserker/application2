@@ -2,7 +2,7 @@
   "expo": {
     "name": "Oreblogda",
     "slug": "oreblogda",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/myicon.png",
     "scheme": "oreblogda",
@@ -46,7 +46,7 @@
         }
       ],
       "config": {
-        "googleMobileAdsAppId": "ca-app-pub-7937601457401494~9318002029"
+        "googleMobileAdsAppId": "ca-app-pub-8021671365048667~3586113443"
       }
     },
     "web": {
@@ -71,7 +71,7 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-7937601457401494~9318002029",
+          "androidAppId": "ca-app-pub-8021671365048667~3586113443",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511",
           "userTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you."
         }
