@@ -122,6 +122,9 @@ export default function AuthorDiaryDashboard() {
     const [saveStatus, setSaveStatus] = useState("synced"); // 'synced' | 'saving'
     const [lastSavedTime, setLastSavedTime] = useState("");
 
+    // 🔹 NEW: Mission Log Toggle
+    const [showMissionLog, setShowMissionLog] = useState(false);
+
     // 🔹 NEW: 1. Initial Load of Saved Draft
     useEffect(() => {
         const loadDraft = async () => {
@@ -623,14 +626,75 @@ export default function AuthorDiaryDashboard() {
         return <View className="px-4 py-1">{finalElements}</View>;
     };
 
-    // 🔹 UPDATED: Loading check includes 'uploading' to ensure animation plays during Cloudinary sync
-    if (contextLoading || submitting || isDraftRestoring || uploading) {
+    // 🔹 NEW: Mission Log UI Component
+    const renderMissionLog = () => {
+        if (!todayPosts || todayPosts.length === 0) return null;
+
+        return (
+            <View className="mt-8">
+                <View className="flex-row items-center mb-4 ml-1">
+                    <Ionicons name="list" size={16} color={THEME.accent} className="mr-2" />
+                    <Text className="text-xs font-black uppercase text-gray-500 tracking-widest">Mission Log (Last 24h)</Text>
+                </View>
+                
+                {todayPosts.map((post, index) => (
+                    <View 
+                        key={post._id || index} 
+                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }} 
+                        className="mb-3 p-4 rounded-2xl border flex-row items-center"
+                    >
+                        <View className="flex-1">
+                            <Text className="text-white font-black text-sm uppercase mb-1" numberOfLines={1}>{post.title}</Text>
+                            <View className="flex-row items-center">
+                                <View 
+                                    className={`w-1.5 h-1.5 rounded-full mr-2 ${
+                                        post.status === 'approved' ? 'bg-green-500' : 
+                                        post.status === 'rejected' ? 'bg-red-500' : 'bg-yellow-500'
+                                    }`} 
+                                />
+                                <Text className={`text-[9px] font-black uppercase tracking-tighter ${
+                                    post.status === 'approved' ? 'text-green-500' : 
+                                    post.status === 'rejected' ? 'text-red-500' : 'text-yellow-500'
+                                }`}>
+                                    {post.status}
+                                </Text>
+                            </View>
+                            
+                            {/* 🔹 Show Rejection Reason if it exists */}
+                            {post.status === 'rejected' && post.rejectionReason && (
+                                <View className="mt-2 bg-red-500/5 p-2 rounded-lg border border-red-500/10">
+                                    <Text className="text-[10px] text-red-400 font-medium italic">
+                                        REASON: {post.rejectionReason}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                        
+                        <View className="items-end">
+                            <Text className="text-[8px] text-gray-600 font-bold">
+                                {new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                            <Ionicons 
+                                name={post.status === 'approved' ? "checkmark-circle" : post.status === 'rejected' ? "alert-circle" : "sync"} 
+                                size={18} 
+                                color={post.status === 'approved' ? "#22c55e" : post.status === 'rejected' ? "#ef4444" : "#eab308"} 
+                                style={{ marginTop: 4 }}
+                            />
+                        </View>
+                    </View>
+                ))}
+            </View>
+        );
+    };
+
+    // 🔹 NEW: Update Loading check to include draft restoration
+    if (contextLoading || submitting || isDraftRestoring) {
         return <AnimeLoading 
             message={submitting ? "Submitting" : uploading ? "Uploading" : isDraftRestoring ? "Restoring" : "Loading"} 
-            subMessage={isDraftRestoring ? "Synchronizing core draft modules..." : uploading ? "Syncing media with Cloudinary..." : "Fetching Otaku diary"} 
+            subMessage={isDraftRestoring ? "Synchronizing core draft modules..." : "Fetching Otaku diary"} 
         />
     }
-    
+
     return (
         <View style={{ flex: 1, backgroundColor: THEME.bg }}>
             <StatusBar barStyle="light-content" />
@@ -674,45 +738,50 @@ export default function AuthorDiaryDashboard() {
 
                 {/* --- POST LIMIT / STATUS VIEW --- */}
                 {postsLast24h >= maxPostsToday && !canPostAgain ? (
-                    <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="p-8 rounded-[40px] border items-center">
-                        <View className={`w-20 h-20 rounded-full items-center justify-center mb-6 ${todayPost?.status === 'rejected' ? 'bg-red-500/10' : 'bg-blue-500/10'}`}>
-                            <Ionicons name={todayPost?.status === 'rejected' ? "close-outline" : "time-outline"} size={40} color={todayPost?.status === 'rejected' ? THEME.red : THEME.accent} />
-                        </View>
-
-                        <Text className="text-2xl font-black uppercase italic text-white text-center">
-                            Entry: {todayPost?.status?.toUpperCase() || "LOCKED"}
-                        </Text>
-
-                        <Text className="text-gray-500 text-center mt-3 leading-5 font-medium">
-                            {todayPost?.status === 'pending' && "Your intel is currently being decrypted by our THE SYSTEM."}
-                            {todayPost?.status === 'approved' && "Daily transmission limit reached. Link available in:"}
-                            {todayPost?.status === 'rejected' && "Transmission failed. System cooldown active:"}
-                        </Text>
-
-                        {(todayPost?.status === 'rejected' || todayPost?.status === 'approved') && (
-                            <View className="items-center w-full">
-                                <View className="mt-6 flex-row items-center bg-black px-6 py-3 rounded-2xl border border-gray-800">
-                                    <Ionicons name="timer-outline" size={18} color={THEME.accent} style={{ marginRight: 8 }} />
-                                    <Text className="font-black text-xl text-blue-600">{timeLeft || "00:00"}</Text>
-                                </View>
-
-                                <TouchableOpacity
-                                    onPress={() => isLoaded ? show() : load()}
-                                    className={`mt-8 w-full py-5 rounded-2xl flex-row justify-center items-center ${isLoaded ? 'bg-blue-600' : 'bg-gray-800'}`}
-                                >
-                                    {isLoaded ? <Ionicons name="play" size={20} color="white" /> : <ActivityIndicator size="small" color="#444" />}
-                                    <Text className="text-white font-black uppercase tracking-widest ml-2">Override Limit (Watch Ad)</Text>
-                                </TouchableOpacity>
+                    <View>
+                        <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="p-8 rounded-[40px] border items-center">
+                            <View className={`w-20 h-20 rounded-full items-center justify-center mb-6 ${todayPost?.status === 'rejected' ? 'bg-red-500/10' : 'bg-blue-500/10'}`}>
+                                <Ionicons name={todayPost?.status === 'rejected' ? "close-outline" : "time-outline"} size={40} color={todayPost?.status === 'rejected' ? THEME.red : THEME.accent} />
                             </View>
-                        )}
 
-                        <Link href={todayPost?.status === "rejected" ? "/screens/Rules" : "/"} asChild>
-                            <TouchableOpacity className="mt-4">
-                                <Text className="text-gray-600 font-bold uppercase tracking-tighter text-xs">
-                                    {todayPost?.status === "rejected" ? "View Archive Rules" : "Return to Uplink"}
-                                </Text>
-                            </TouchableOpacity>
-                        </Link>
+                            <Text className="text-2xl font-black uppercase italic text-white text-center">
+                                Entry: {todayPost?.status?.toUpperCase() || "LOCKED"}
+                            </Text>
+
+                            <Text className="text-gray-500 text-center mt-3 leading-5 font-medium">
+                                {todayPost?.status === 'pending' && "Your intel is currently being decrypted by our THE SYSTEM."}
+                                {todayPost?.status === 'approved' && "Daily transmission limit reached. Link available in:"}
+                                {todayPost?.status === 'rejected' && "Transmission failed. System cooldown active:"}
+                            </Text>
+
+                            {(todayPost?.status === 'rejected' || todayPost?.status === 'approved') && (
+                                <View className="items-center w-full">
+                                    <View className="mt-6 flex-row items-center bg-black px-6 py-3 rounded-2xl border border-gray-800">
+                                        <Ionicons name="timer-outline" size={18} color={THEME.accent} style={{ marginRight: 8 }} />
+                                        <Text className="font-black text-xl text-blue-600">{timeLeft || "00:00"}</Text>
+                                    </View>
+
+                                    <TouchableOpacity
+                                        onPress={() => isLoaded ? show() : load()}
+                                        className={`mt-8 w-full py-5 rounded-2xl flex-row justify-center items-center ${isLoaded ? 'bg-blue-600' : 'bg-gray-800'}`}
+                                    >
+                                        {isLoaded ? <Ionicons name="play" size={20} color="white" /> : <ActivityIndicator size="small" color="#444" />}
+                                        <Text className="text-white font-black uppercase tracking-widest ml-2">Override Limit (Watch Ad)</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
+                            <Link href={todayPost?.status === "rejected" ? "/screens/Rules" : "/"} asChild>
+                                <TouchableOpacity className="mt-4">
+                                    <Text className="text-gray-600 font-bold uppercase tracking-tighter text-xs">
+                                        {todayPost?.status === "rejected" ? "View Archive Rules" : "Return to Uplink"}
+                                    </Text>
+                                </TouchableOpacity>
+                            </Link>
+                        </View>
+                        
+                        {/* 🔹 Mission Log inside Cooldown screen */}
+                        {renderMissionLog()}
                     </View>
                 ) : (
                     <View>
@@ -728,8 +797,22 @@ export default function AuthorDiaryDashboard() {
                             </View>
                         </View>
 
+                        {/* 🔹 Mission Log Toggle on Main Form Screen */}
+                        <TouchableOpacity 
+                            onPress={() => setShowMissionLog(!showMissionLog)}
+                            className="mb-6 flex-row items-center justify-between bg-blue-600/5 p-4 rounded-2xl border border-blue-600/20"
+                        >
+                            <View className="flex-row items-center">
+                                <Ionicons name="receipt-outline" size={20} color={THEME.accent} />
+                                <Text className="text-white font-black uppercase italic ml-3 text-xs">Recent Mission History</Text>
+                            </View>
+                            <Ionicons name={showMissionLog ? "chevron-up" : "chevron-down"} size={20} color={THEME.accent} />
+                        </TouchableOpacity>
+
+                        {showMissionLog && renderMissionLog()}
+
                         {/* --- FORM SECTION --- */}
-                        <View className="flex-row justify-between items-center mb-6">
+                        <View className="flex-row justify-between items-center mb-6 mt-4">
                             <Text className="text-lg font-black uppercase italic text-white">{showPreview ? "Intel Preview" : "Create New Intel"}</Text>
                             
                             <View className="flex-row gap-2">
@@ -876,4 +959,5 @@ export default function AuthorDiaryDashboard() {
             </ScrollView>
         </View>
     );
+
 }
