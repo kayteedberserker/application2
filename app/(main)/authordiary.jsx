@@ -727,7 +727,7 @@ export default function AuthorDiaryDashboard() {
                                 )}
                             </View>
                         </View>
-                        <Text className="text-3xl font-black italic uppercase text-white">
+                        <Text className="text-3xl font-black italic uppercase">
                             Welcome, <Text className="text-blue-600">{user?.username}</Text>
                         </Text>
                     </View>
@@ -920,7 +920,7 @@ export default function AuthorDiaryDashboard() {
                                 {/* Poll Module */}
                                 <View style={{ backgroundColor: THEME.card, borderColor: hasPoll ? THEME.accent : THEME.border }} className="p-6 rounded-3xl border-2 mt-4">
                                     <View className="flex-row justify-between items-center mb-4">
-                                        <Text className="text-white font-black uppercase tracking-widest text-[11px]">Deploy Poll Module</Text>
+                                        <Text className="font-black uppercase tracking-widest text-[11px]">Deploy Poll Module</Text>
                                         <Switch value={hasPoll} onValueChange={setHasPoll} trackColor={{ true: '#2563eb' }} thumbColor="white" />
                                     </View>
                                     {hasPoll && (
@@ -931,7 +931,7 @@ export default function AuthorDiaryDashboard() {
                                                         placeholder={`Option ${i + 1}`}
                                                         value={option}
                                                         onChangeText={(t) => updatePollOption(t, i)}
-                                                        style={{ backgroundColor: '#000', borderColor: THEME.border, color: '#fff' }}
+                                                        style={{ backgroundColor: '#000', borderColor: THEME.border, color: THEME.text}}
                                                         className="flex-1 border p-4 rounded-xl text-white font-bold"
                                                     />
                                                     {pollOptions.length > 2 && <TouchableOpacity onPress={() => removePollOption(i)}><Ionicons name="close-circle" size={24} color={THEME.red} /></TouchableOpacity>}
