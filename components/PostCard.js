@@ -193,7 +193,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                 if (res.ok) {
                     const data = await res.json();
                     setAuthor({
-                        name: data.name || post.authorName,
+                        name: data.user?.username || post.authorName,
                         image: data.user?.profilePic?.url,
                         streak: data.user?.lastStreak || null
                     });
