@@ -623,13 +623,14 @@ export default function AuthorDiaryDashboard() {
         return <View className="px-4 py-1">{finalElements}</View>;
     };
 
-    // 🔹 NEW: Update Loading check to include draft restoration
-    if (contextLoading || submitting || isDraftRestoring) {
+    // 🔹 UPDATED: Loading check includes 'uploading' to ensure animation plays during Cloudinary sync
+    if (contextLoading || submitting || isDraftRestoring || uploading) {
         return <AnimeLoading 
             message={submitting ? "Submitting" : uploading ? "Uploading" : isDraftRestoring ? "Restoring" : "Loading"} 
-            subMessage={isDraftRestoring ? "Synchronizing core draft modules..." : "Fetching Otaku diary"} 
+            subMessage={isDraftRestoring ? "Synchronizing core draft modules..." : uploading ? "Syncing media with Cloudinary..." : "Fetching Otaku diary"} 
         />
     }
+    
     return (
         <View style={{ flex: 1, backgroundColor: THEME.bg }}>
             <StatusBar barStyle="light-content" />
@@ -875,5 +876,4 @@ export default function AuthorDiaryDashboard() {
             </ScrollView>
         </View>
     );
-
 }
