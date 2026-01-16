@@ -2,6 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { Link, useRouter } from "expo-router";
+// 🔹 NEW IMPORT: For saving drafts locally
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -115,6 +117,96 @@ export default function AuthorDiaryDashboard() {
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
     const [pickedImage, setPickedImage] = useState(false);
 
+    // 🔹 NEW: Draft Persistence States
+    const [isDraftRestoring, setIsDraftRestoring] = useState(true);
+    const [saveStatus, setSaveStatus] = useState("synced"); // 'synced' | 'saving'
+    const [lastSavedTime, setLastSavedTime] = useState("");
+
+    // 🔹 NEW: 1. Initial Load of Saved Draft
+    useEffect(() => {
+        const loadDraft = async () => {
+            if (!fingerprint) return;
+            try {
+                const saved = await AsyncStorage.getItem(`draft_${fingerprint}`);
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    // Only restore if data exists
+                    if (data.title) setTitle(data.title);
+                    if (data.message) setMessage(data.message);
+                    if (data.category) setCategory(data.category);
+                    if (data.hasPoll) setHasPoll(data.hasPoll);
+                    if (data.pollOptions) setPollOptions(data.pollOptions);
+                    if (data.timestamp) setLastSavedTime(data.timestamp);
+                }
+            } catch (err) {
+                console.error("Restoration Error:", err);
+            } finally {
+                // Short delay to ensure context is ready before hiding loader
+                setTimeout(() => setIsDraftRestoring(false), 500);
+            }
+        };
+        loadDraft();
+    }, [fingerprint]);
+
+    // 🔹 NEW: 2. Debounced Auto-save Effect
+    useEffect(() => {
+        // Don't save if we are currently restoring or if no user ID
+        if (isDraftRestoring || !fingerprint) return;
+
+        setSaveStatus("saving");
+        const timer = setTimeout(async () => {
+            try {
+                const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const draftData = {
+                    title,
+                    message,
+                    category,
+                    hasPoll,
+                    pollOptions,
+                    timestamp: now
+                };
+                await AsyncStorage.setItem(`draft_${fingerprint}`, JSON.stringify(draftData));
+                setLastSavedTime(now);
+                setSaveStatus("synced");
+            } catch (err) {
+                console.error("Save Error:", err);
+            }
+        }, 1500); // Saves 1.5 seconds after you stop typing
+
+        return () => clearTimeout(timer);
+    }, [title, message, category, hasPoll, pollOptions, fingerprint, isDraftRestoring]);
+
+    // 🔹 NEW: Clear All / Wipe Handler
+    const handleClearAll = () => {
+        Alert.alert(
+            "Wipe Local Intel?",
+            "This will permanently delete your current draft and clear the form.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Clear Everything",
+                    style: "destructive",
+                    onPress: async () => {
+                        setTitle("");
+                        setMessage("");
+                        setCategory("News");
+                        setHasPoll(false);
+                        setPollOptions(["", ""]);
+                        setMediaUrl("");
+                        setMediaUrlLink("");
+                        setPickedImage(false);
+                        try {
+                            await AsyncStorage.removeItem(`draft_${fingerprint}`);
+                            Toast.show({ type: 'info', text1: 'Intel cleared successfully.' });
+                        } catch (e) {
+                            console.error("Clear error", e);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     useEffect(() => {
         const fetchTotalPosts = async () => {
             if (!user?.deviceId) return;
@@ -223,7 +315,7 @@ export default function AuthorDiaryDashboard() {
                             body: "Your diary cooldown is over. You can post your next entry now!",
                             sound: true,
                             // 🔹 This data payload will be caught by the global handler in _layout.js
-                            data: { type: "open_diary" } 
+                            data: { type: "open_diary" }
                         },
                         trigger: {
                             type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -402,6 +494,10 @@ export default function AuthorDiaryDashboard() {
             const data = await response.json();
             updateStreak(fingerprint);
             if (!response.ok) throw new Error(data.message || "Failed to create post");
+            
+            // 🔹 NEW: Remove draft after successful post
+            await AsyncStorage.removeItem(`draft_${fingerprint}`);
+            
             Alert.alert("Success", "Your entry has been submitted for approval!");
             setRewardToken(null);
             setCanPostAgain(false);
@@ -527,8 +623,12 @@ export default function AuthorDiaryDashboard() {
         return <View className="px-4 py-1">{finalElements}</View>;
     };
 
-    if (contextLoading || submitting) {
-        return <AnimeLoading message={submitting ? "Submitting" : uploading ? "Uploading" : "Loading"} subMessage="Fetching Otaku diary" />
+    // 🔹 NEW: Update Loading check to include draft restoration
+    if (contextLoading || submitting || isDraftRestoring) {
+        return <AnimeLoading 
+            message={submitting ? "Submitting" : uploading ? "Uploading" : isDraftRestoring ? "Restoring" : "Loading"} 
+            subMessage={isDraftRestoring ? "Synchronizing core draft modules..." : "Fetching Otaku diary"} 
+        />
     }
     return (
         <View style={{ flex: 1, backgroundColor: THEME.bg }}>
@@ -546,6 +646,21 @@ export default function AuthorDiaryDashboard() {
                         <View className="flex-row items-center mb-1">
                             <View className="h-2 w-2 bg-blue-600 rounded-full mr-2" style={{ shadowColor: '#2563eb', shadowRadius: 8, shadowOpacity: 0.8 }} />
                             <Text className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Authorized Session</Text>
+                            
+                            {/* 🔹 NEW: Sync Status Badge */}
+                            <View className="ml-4 flex-row items-center bg-gray-900 px-2 py-0.5 rounded-full border border-gray-800">
+                                {saveStatus === "saving" ? (
+                                    <>
+                                        <ActivityIndicator size={8} color={THEME.accent} className="mr-1" />
+                                        <Text className="text-[8px] text-gray-500 font-black">SAVING...</Text>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Ionicons name="cloud-done" size={10} color="#22c55e" style={{ marginRight: 4 }} />
+                                        <Text className="text-[8px] text-green-500 font-black">SYNCED {lastSavedTime}</Text>
+                                    </>
+                                )}
+                            </View>
                         </View>
                         <Text className="text-3xl font-black italic uppercase text-white">
                             Welcome, <Text className="text-blue-600">{user?.username}</Text>
@@ -615,9 +730,17 @@ export default function AuthorDiaryDashboard() {
                         {/* --- FORM SECTION --- */}
                         <View className="flex-row justify-between items-center mb-6">
                             <Text className="text-lg font-black uppercase italic text-white">{showPreview ? "Intel Preview" : "Create New Intel"}</Text>
-                            <TouchableOpacity onPress={() => setShowPreview(!showPreview)} className="bg-blue-600/10 px-4 py-2 rounded-xl border border-blue-600/20">
-                                <Text className="text-blue-500 text-[10px] font-black uppercase">{showPreview ? "Edit Mode" : "Preview"}</Text>
-                            </TouchableOpacity>
+                            
+                            <View className="flex-row gap-2">
+                                {/* 🔹 NEW: Clear All Button */}
+                                <TouchableOpacity onPress={handleClearAll} className="bg-red-600/10 px-4 py-2 rounded-xl border border-red-600/20">
+                                    <Text className="text-red-500 text-[10px] font-black uppercase">Clear All</Text>
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity onPress={() => setShowPreview(!showPreview)} className="bg-blue-600/10 px-4 py-2 rounded-xl border border-blue-600/20">
+                                    <Text className="text-blue-500 text-[10px] font-black uppercase">{showPreview ? "Edit Mode" : "Preview"}</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                         {showPreview ? (
