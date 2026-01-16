@@ -1,4 +1,4 @@
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
@@ -24,8 +24,8 @@ const { width } = Dimensions.get('window');
 
 export default function FirstLaunchScreen() {
   const [username, setUsername] = useState("");
-  const [recoverId, setRecoverId] = useState(""); // 👈 Added for ID recovery
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false); // 👈 Toggle state
+  const [recoverId, setRecoverId] = useState(""); 
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false); 
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const router = useRouter();
@@ -75,28 +75,29 @@ export default function FirstLaunchScreen() {
   const handleAction = async () => {
     if (isProcessing) return;
 
+    const cleanUsername = username.trim();
+    const cleanRecoverId = recoverId.trim();
+
     // Validation
     if (!isRecoveryMode) {
-        if (!username.trim() || username.trim().length < 3 || username.trim() === "Admin") {
+        if (!cleanUsername || cleanUsername.length < 3 || cleanUsername === "Admin") {
             return notify("Invalid Username", "Username must be at least 3 characters.");
         }
     } else {
-        if (!recoverId.trim()) {
+        if (!cleanRecoverId) {
             return notify("Missing ID", "Please enter your previous Device ID to synchronize.");
         }
     }
 
-    setIsProcessing(true);
+  setIsProcessing(true);
     try {
       const currentDeviceId = await getFingerprint();
       const pushToken = await registerForPushNotificationsAsync();
 
-      // We use the same endpoint or a separate one, but for this logic:
-      // If recovery: use input ID. If register: use current fingerprint.
-      const targetId = isRecoveryMode ? recoverId.trim() : (currentDeviceId || "device-id");
+      const targetId = isRecoveryMode ? cleanRecoverId : (currentDeviceId || "device-id");
       
       const endpoint = isRecoveryMode 
-        ? "https://oreblogda.com/api/mobile/recover" // 👈 New endpoint for matching existing ID
+        ? "https://oreblogda.com/api/mobile/recover" 
         : "https://oreblogda.com/api/mobile/register";
 
       const res = await fetch(endpoint, {
@@ -104,7 +105,7 @@ export default function FirstLaunchScreen() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             deviceId: targetId,
-            username: isRecoveryMode ? undefined : username.trim(),
+            username: isRecoveryMode ? undefined : cleanUsername,
             pushToken,
           }),
         }
@@ -113,10 +114,9 @@ export default function FirstLaunchScreen() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Operation failed");
 
-      // Data returned from server should include the username found in DB if recovering
       const userData = {
         deviceId: targetId,
-        username: data.username || username.trim(),
+        username: (data.username || cleanUsername).toUpperCase(),
         pushToken,
       };
 
@@ -142,29 +142,32 @@ export default function FirstLaunchScreen() {
     <View style={{ flex: 1, backgroundColor: THEME.bg }} className="justify-center items-center px-8">
       
       {/* Ambient Background Glows */}
-      <View style={{ position: 'absolute', top: 100, right: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowBlue, opacity: 0.3 }} />
-      <View style={{ position: 'absolute', bottom: 100, left: -100, width: 400, height: 400, borderRadius: 200, backgroundColor: THEME.glowIndigo, opacity: 0.3 }} />
+      <View style={{ position: 'absolute', top: 100, right: -100, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowBlue, opacity: THEME.isDark ? 0.3 : 0.1 }} />
+      <View style={{ position: 'absolute', bottom: 100, left: -100, width: 400, height: 400, borderRadius: 200, backgroundColor: THEME.glowIndigo, opacity: THEME.isDark ? 0.3 : 0.1 }} />
 
       {/* Terminal Icon */}
       <View 
-        style={{ borderColor: isRecoveryMode ? '#a855f7' : THEME.border }}
-        className="w-20 h-20 bg-gray-900 rounded-[30px] items-center justify-center mb-8 border-2 shadow-2xl shadow-blue-500/20"
+        style={{ 
+          backgroundColor: THEME.card, 
+          borderColor: isRecoveryMode ? '#a855f7' : THEME.border 
+        }}
+        className="w-20 h-20 rounded-[30px] items-center justify-center mb-8 border-2 shadow-2xl"
       >
         <Ionicons name={isRecoveryMode ? "key-outline" : "finger-print"} size={40} color={isRecoveryMode ? '#a855f7' : THEME.accent} />
       </View>
 
       <View className="items-center mb-10">
-        <Text className="text-[10px] font-black uppercase tracking-[0.4em] text-blue-600 mb-2 text-center">
+        <Text style={{ color: THEME.accent }} className="text-[10px] font-black uppercase tracking-[0.4em] mb-2 text-center">
             {isRecoveryMode ? "Data Restoration" : "Identity Initialization"}
         </Text>
-        <Text className="text-4xl font-black italic uppercase text-white text-center">
+        <Text style={{ color: THEME.text }} className="text-4xl font-black italic uppercase text-center">
             {isRecoveryMode ? "Link Account" : "Welcome"}
         </Text>
       </View>
 
       {/* Form Section */}
       <View className="w-full">
-        <Text className="text-gray-600 font-black uppercase text-[9px] tracking-[0.2em] mb-3 ml-1">
+        <Text style={{ color: THEME.textSecondary }} className="font-black uppercase text-[9px] tracking-[0.2em] mb-3 ml-1">
             {isRecoveryMode ? "Enter Previous Device ID" : "Callsign Assignment"}
         </Text>
         
@@ -173,8 +176,9 @@ export default function FirstLaunchScreen() {
                 style={{ backgroundColor: THEME.card, borderColor: '#a855f7', color: THEME.text}}
                 className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic uppercase"
                 placeholder="PASTE DEVICE ID HERE"
-                placeholderTextColor="#334155"
+                placeholderTextColor={THEME.textSecondary + '80'}
                 autoCapitalize="none"
+                autoCorrect={false}
                 value={recoverId}
                 onChangeText={setRecoverId}
                 editable={!isProcessing}
@@ -182,10 +186,12 @@ export default function FirstLaunchScreen() {
         ) : (
             <TextInput
                 style={{ backgroundColor: THEME.card, borderColor: THEME.border, color: THEME.text }}
-                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 text-white font-black italic uppercase"
-                placeholder="ENTER USERNAME OR ANY NAME 😗😗(E.G. ANIMELOVER)"
-                placeholderTextColor="#334155"
-                autoCapitalize="none"
+                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic uppercase"
+                placeholder="ENTER USERNAME..."
+                placeholderTextColor={THEME.textSecondary + '80'}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                spellCheck={false}
                 value={username}
                 onChangeText={setUsername}
                 editable={!isProcessing}
@@ -197,7 +203,7 @@ export default function FirstLaunchScreen() {
             onPress={() => setIsRecoveryMode(!isRecoveryMode)} 
             className="mb-8 items-center"
         >
-            <RNText className="text-blue-500 text-[10px] font-bold uppercase tracking-widest">
+            <RNText style={{ color: THEME.accent }} className="text-[10px] font-bold uppercase tracking-widest">
                 {isRecoveryMode ? "Create New Identity instead" : "Have a previous Device ID? Link here"}
             </RNText>
         </Pressable>
@@ -212,7 +218,7 @@ export default function FirstLaunchScreen() {
               opacity: isProcessing ? 0.7 : 1
             }
           ]}
-          className="w-full py-5 rounded-[24px] flex-row justify-center items-center shadow-2xl shadow-blue-500/40"
+          className="w-full py-5 rounded-[24px] flex-row justify-center items-center shadow-2xl"
         >
           {isProcessing ? (
             <>
@@ -224,7 +230,7 @@ export default function FirstLaunchScreen() {
           ) : (
             <>
               <Ionicons name={isRecoveryMode ? "git-network-outline" : "power"} size={18} color="white" style={{ marginRight: 10 }} />
-              <RNText style={{ color: THEME.text, fontSize: 16, fontWeight: "900", fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: 2 }}>
+              <RNText style={{ color: "white", fontSize: 16, fontWeight: "900", fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: 2 }}>
                 {isRecoveryMode ? "Sync Account" : "Establish Link"}
               </RNText>
             </>
@@ -233,7 +239,7 @@ export default function FirstLaunchScreen() {
       </View>
 
       <View className="absolute bottom-12 items-center">
-        <Text className="text-gray-800 font-black text-[8px] uppercase tracking-[0.5em]">Secure Auth Sector 7</Text>
+        <Text style={{ color: THEME.textSecondary }} className="font-black text-[8px] uppercase tracking-[0.5em]">Secure Auth Sector 7</Text>
       </View>
     </View>
   );
