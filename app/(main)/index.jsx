@@ -6,8 +6,8 @@ import CategoryPage from "./categories/[id]"; // Adjust this path if your Catego
 
 const { width } = Dimensions.get('window');
 
-// 🔹 Define your swipe order
-const CATEGORIES = ["Home", "News", "Memes", "Polls", "Reviews", "Gaming"];
+// 🔹 Define your swipe order (Ensure these match your Nav exactly)
+const CATEGORIES = ["Home", "News", "Memes", "Polls", "Review", "Gaming"];
 
 export default function HomePage() {
   const pagerRef = useRef(null);
@@ -16,7 +16,9 @@ export default function HomePage() {
   // 🔹 Listen for clicks from your Category Nav Bar
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener("jumpToCategory", (categoryName) => {
+      // Find index regardless of case
       const index = CATEGORIES.findIndex(cat => cat.toLowerCase() === categoryName.toLowerCase());
+      
       if (index !== -1 && pagerRef.current) {
         pagerRef.current.setPage(index);
       }
@@ -27,8 +29,10 @@ export default function HomePage() {
   const onPageSelected = (e) => {
     const index = e.nativeEvent.position;
     setActivePageIndex(index);
-    // Optional: Emit event so Nav Bar knows which button to highlight
+    
+    // 🔹 Emit BOTH the name (for Nav highlight) and the index (for Back Button logic in Layout)
     DeviceEventEmitter.emit("categoryChanged", CATEGORIES[index]);
+    DeviceEventEmitter.emit("categoryIndexChanged", index); // Helps MainLayout track state
   };
 
   return (
@@ -63,7 +67,7 @@ export default function HomePage() {
 
         {/* PAGE 4: REVIEWS */}
         <View key="4">
-          <CategoryPage id="reviews" />
+          <CategoryPage id="review" />
         </View>
 
         {/* PAGE 5: GAMING */}
