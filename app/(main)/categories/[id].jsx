@@ -7,8 +7,7 @@ import {
     Dimensions,
     FlatList,
     Text as RNText,
-    View,
-    BackHandler
+    View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimeLoading from "../../../components/AnimeLoading";
@@ -21,13 +20,8 @@ const { width } = Dimensions.get('window');
 const API_BASE = "https://oreblogda.com/api";
 const LIMIT = 5;
 
-// 🔹 Reusable component for both URL navigation and Swiper
-export default function CategoryPage({ id: passedId }) {
-    const { id: paramId } = useLocalSearchParams();
-    
-    // 🔹 Priority: Prop ID (from Swiper) > URL Param ID
-    const id = passedId || paramId;
-
+export default function CategoryPage() {
+    const { id } = useLocalSearchParams();
     const insets = useSafeAreaInsets();
     const { colorScheme } = useColorScheme();
     const isDark = colorScheme === "dark";
@@ -77,11 +71,8 @@ export default function CategoryPage({ id: passedId }) {
         }
     };
 
-    // 🔹 Refetch if ID changes (important when swiping between categories)
     useEffect(() => {
-        if (id) {
-            fetchPosts(1, true);
-        }
+        fetchPosts(1, true);
     }, [id]);
 
     const renderItem = ({ item, index }) => {
@@ -101,15 +92,11 @@ export default function CategoryPage({ id: passedId }) {
         );
     };
 
-    // 🔹 Full screen loader for the initial category load
     if (loading && posts.length === 0) {
-        return (
-            <View style={{ flex: 1, backgroundColor: isDark ? "#050505" : "#ffffff" }}>
-                <AnimeLoading message="Loading Posts" subMessage={`Category: ${categoryName}`} />
-            </View>
-        );
+        return <AnimeLoading message="Loading Posts" subMessage={`Category: ${categoryName}`} />;
     }
 
+    // --- HEADER: Archive Sector HUD ---
     const ListHeader = () => (
         <View className="px-5 mb-10 pb-6 border-b-2 border-gray-100 dark:border-gray-800">
             <View className="flex-row items-center gap-3 mb-2">
@@ -127,6 +114,7 @@ export default function CategoryPage({ id: passedId }) {
                 >
                     Folder: <Text className="text-blue-600">{categoryName}</Text>
                 </Text>
+                {/* Tactical Accent */}
                 <View className="absolute -bottom-2 left-0 h-[2px] w-20 bg-blue-600 shadow-[0_0_8px_#2563eb]" />
             </View>
         </View>
@@ -134,29 +122,42 @@ export default function CategoryPage({ id: passedId }) {
 
     return (
         <View style={{ flex: 1, backgroundColor: isDark ? "#050505" : "#ffffff" }}>
-            {/* Atmospheric Backgrounds */}
+            {/* --- LAYER 1: ATMOSPHERIC BACKGROUND EFFECTS --- */}
+            {/* Top Right Glow */}
             <View 
                 pointerEvents="none"
                 className="absolute -top-20 -right-20 rounded-full opacity-[0.08]"
-                style={{ width: width * 0.7, height: width * 0.7, backgroundColor: isDark ? '#2563eb' : '#3b82f6' }} 
+                style={{ 
+                    width: width * 0.7, 
+                    height: width * 0.7, 
+                    backgroundColor: isDark ? '#2563eb' : '#3b82f6',
+                }} 
             />
             
+            {/* Bottom Left Glow */}
             <View 
                 pointerEvents="none"
                 className="absolute bottom-20 -left-20 rounded-full opacity-[0.05]"
-                style={{ width: width * 0.6, height: width * 0.6, backgroundColor: isDark ? '#4f46e5' : '#60a5fa' }} 
+                style={{ 
+                    width: width * 0.6, 
+                    height: width * 0.6, 
+                    backgroundColor: isDark ? '#4f46e5' : '#60a5fa',
+                }} 
             />
 
+            {/* --- MAIN CONTENT ENGINE --- */}
             <FlatList
                 ref={scrollRef}
                 data={posts}
                 keyExtractor={(item) => item._id}
                 renderItem={renderItem}
                 ListHeaderComponent={ListHeader}
+                
                 contentContainerStyle={{
-                    paddingTop: 20, 
+                    paddingTop: insets.top + 20,
                     paddingBottom: insets.bottom + 100,
                 }}
+
                 ListFooterComponent={() => (
                     <View className="py-12 items-center justify-center min-h-[140px]">
                         {loading ? (
@@ -179,6 +180,8 @@ export default function CategoryPage({ id: passedId }) {
                         ) : null}
                     </View>
                 )}
+
+                // --- FUNCTIONAL LOGIC (Kept intact) ---
                 onEndReached={() => fetchPosts(page)}
                 onEndReachedThreshold={0.5}
                 onRefresh={() => fetchPosts(1, true)}
@@ -189,6 +192,7 @@ export default function CategoryPage({ id: passedId }) {
                 scrollEventThrottle={16}
             />
 
+            {/* --- TACTICAL HUD DECOR (Sidebar-style element for Mobile) --- */}
             <View 
                 className="absolute right-0 top-1/2 -translate-y-1/2 h-20 w-1 bg-blue-600 opacity-20 rounded-l-full" 
                 pointerEvents="none"
