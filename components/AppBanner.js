@@ -5,17 +5,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AdConfig } from '../utils/AdConfig';
 
 const BANNER_ID = __DEV__ ? TestIds.BANNER : AdConfig.banner;
-const SECRET_PIN = "1807"; // 👈 Set your secret admin PIN here
+const SECRET_PIN = "1807"; 
 const BANNED_KEY = "@admin_debug_banned";
 
 const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
   const [failed, setFailed] = useState(false);
+  const [errorCode, setErrorCode] = useState(null); 
   const [loaded, setLoaded] = useState(false);
   
   // Debug Menu States
   const [modalVisible, setModalVisible] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [isBanned, setIsBanned] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false); // 👈 New state: Hidden by default
 
   useEffect(() => {
     const checkBan = async () => {
@@ -25,22 +27,23 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
     checkBan();
   }, []);
 
-  const handleOpenInspector = async () => {
+  const handleVerifyAdmin = async () => {
     if (pinInput === SECRET_PIN) {
+      setModalVisible(false);
+      setPinInput("");
+      setShowDebugInfo(true); // 👈 Correct PIN reveals the error message
+      
       try {
-        setModalVisible(false);
-        setPinInput("");
-        // This opens the Google Ad Inspector to see why ads are failing
+        // Try to open inspector, but we know it might fail on non-test devices
         await MobileAds().openAdInspector();
       } catch (e) {
-        Alert.alert("Error", "Inspector failed to open. Check your internet or AdMob setup.");
+        Alert.alert("Admin Mode", `Inspector blocked (Non-Test Device). Debug info is now visible on screen.`);
       }
     } else {
-      // Wrong PIN -> Permanent Ban from Debug Menu
       await AsyncStorage.setItem(BANNED_KEY, "true");
       setIsBanned(true);
       setModalVisible(false);
-      Alert.alert("Access Denied", "Unauthorized attempt. Security lock engaged.");
+      Alert.alert("Access Denied", "Unauthorized attempt.");
     }
   };
 
@@ -52,18 +55,27 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
   return (
     <View style={{ width: '100%', alignItems: 'center', marginVertical: loaded ? 10 : 0 }}>
       
-      {/* 🔹 SECRET TRIGGER: Single tap on "ADS" text */}
+      {/* 🔹 SECRET TRIGGER */}
       {!isBanned && (
         <TouchableOpacity 
-          onPress={() => setModalVisible(true)} // Changed from onDoublePress to onPress
-          hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }} // Makes it easier to tap
+          onPress={() => setModalVisible(true)} 
+          hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }} 
           style={{ alignSelf: 'flex-end', paddingHorizontal: 10 }}
         >
           <Text style={{ fontSize: 9, color: '#ccc', opacity: 0.4, fontWeight: 'bold' }}>ADS</Text>
         </TouchableOpacity>
       )}
 
-      {/* BANNER AD */}
+      {/* 🔹 DEBUG ERROR INFO: Only shows if you entered the PIN correctly */}
+      {showDebugInfo && failed && (
+        <View style={{ padding: 10, backgroundColor: '#fee2e2', borderRadius: 5, marginBottom: 10 }}>
+            <Text style={{ color: '#b91c1c', fontSize: 10, fontWeight: 'bold' }}>
+                ADMIN DEBUG -> Error: {errorCode || 'Unknown'}
+            </Text>
+        </View>
+      )}
+
+      {/* BANNER AD: Shows normally to everyone, disappears if fails */}
       {!failed && (
         <View style={{ minHeight: loaded ? 0 : getMinHeight(), width: '100%', alignItems: 'center' }}>
           <BannerAd
@@ -71,26 +83,24 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
             size={size}
             requestOptions={{ requestNonPersonalizedAdsOnly: true }}
             onAdLoaded={() => {
-              setLoaded(true);
-              if (__DEV__) console.log("Banner Loaded");
+                setLoaded(true);
             }}
             onAdFailedToLoad={(error) => {
               setFailed(true);
+              setErrorCode(error.code); // Store error but don't show it yet
               if (__DEV__) console.error("Banner Failed:", error);
             }}
           />
         </View>
       )}
 
-      {/* 🔹 SECRET ADMIN MODAL */}
+      {/* 🔹 ADMIN MODAL */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <View style={{ backgroundColor: '#1a1a1a', padding: 25, borderRadius: 15, width: '100%', maxWidth: 300, borderWide: 1, borderColor: '#333' }}>
+          <View style={{ backgroundColor: '#1a1a1a', padding: 25, borderRadius: 15, width: '100%', maxWidth: 300 }}>
             <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 18, marginBottom: 5 }}>Admin Access</Text>
-            <Text style={{ color: '#888', fontSize: 12, marginBottom: 20 }}>Verification required to open Ad Inspector.</Text>
-            
             <TextInput
-              style={{ backgroundColor: '#333', color: 'white', padding: 15, borderRadius: 10, marginBottom: 20, fontSize: 16, textAlign: 'center' }}
+              style={{ backgroundColor: '#333', color: 'white', padding: 15, borderRadius: 10, marginBottom: 20, textAlign: 'center' }}
               placeholder="Enter PIN"
               placeholderTextColor="#666"
               keyboardType="numeric"
@@ -99,22 +109,11 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
               value={pinInput}
               onChangeText={setPinInput}
             />
-            
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity 
-                onPress={() => {
-                    setModalVisible(false);
-                    setPinInput("");
-                }} 
-                style={{ padding: 10 }}
-              >
+              <TouchableOpacity onPress={() => { setModalVisible(false); setPinInput(""); }} style={{ padding: 10 }}>
                 <Text style={{ color: '#777' }}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={handleOpenInspector}
-                style={{ backgroundColor: '#3b82f6', paddingHorizontal: 25, paddingVertical: 10, borderRadius: 8 }}
-              >
+              <TouchableOpacity onPress={handleVerifyAdmin} style={{ backgroundColor: '#3b82f6', paddingHorizontal: 25, paddingVertical: 10, borderRadius: 8 }}>
                 <Text style={{ color: 'white', fontWeight: 'bold' }}>Verify</Text>
               </TouchableOpacity>
             </View>
@@ -126,3 +125,4 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
 };
 
 export default AppBanner;
+
