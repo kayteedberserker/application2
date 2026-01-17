@@ -2,17 +2,18 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { Link, useRouter } from "expo-router";
-// 🔹 NEW IMPORT: For saving drafts locally
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
     ActivityIndicator, Alert,
     Linking,
     ScrollView,
     StatusBar,
     Switch, TextInput, TouchableOpacity,
-    View
+    View,
+    Animated,
+    Easing
 } from "react-native";
 import { useRewardedAd } from 'react-native-google-mobile-ads';
 import Toast from "react-native-toast-message";
@@ -36,24 +37,24 @@ Notifications.setNotificationHandler({
 const API_BASE = "https://oreblogda.com/api";
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
+// Helper to fetch total posts (logic kept separate, but result will be cached in component)
 async function getUserTotalPosts(deviceId) {
     if (!deviceId) return 0;
-
     try {
         const res = await fetch(`${API_BASE}/posts?author=${deviceId}`);
         if (!res.ok) throw new Error("Failed to fetch posts");
-
         const data = await res.json();
         return data.posts?.length || 0;
     } catch (err) {
         console.error("Error fetching total posts:", err);
-        return 0;
+        return null; // Return null on error to signal we should keep using cache
     }
 }
 
 /* ===================== RANK SYSTEM HELPERS ===========*/
 const resolveUserRank = (totalPosts) => {
-    const count = totalPosts;
+    // Fallback if totalPosts is null/undefined
+    const count = totalPosts || 0; 
 
     const rankTitle =
         count >= 200 ? "Master_Writer" :
@@ -111,29 +112,44 @@ export default function AuthorDiaryDashboard() {
     const [uploading, setUploading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [timeLeft, setTimeLeft] = useState("");
+    
+    // Rank & Post Limit State
     const [userRank, setUserRank] = useState({ rankTitle: "Novice_Researcher", rankIcon: "🛡️", postLimit: 1 });
     const [canPostAgain, setCanPostAgain] = useState(false);
+    
     const [rewardToken, setRewardToken] = useState(null);
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
     const [pickedImage, setPickedImage] = useState(false);
 
-    // 🔹 NEW: Draft Persistence States
+    // 🔹 CACHING & OFFLINE STATES
     const [isDraftRestoring, setIsDraftRestoring] = useState(true);
     const [saveStatus, setSaveStatus] = useState("synced"); // 'synced' | 'saving'
     const [lastSavedTime, setLastSavedTime] = useState("");
+    const [isOfflineMode, setIsOfflineMode] = useState(false);
+    
+    // Data Caches
+    const [cachedTodayPosts, setCachedTodayPosts] = useState(null);
+    const [cachedRankData, setCachedRankData] = useState(null);
 
     // 🔹 NEW: Mission Log Toggle
     const [showMissionLog, setShowMissionLog] = useState(false);
 
-    // 🔹 NEW: 1. Initial Load of Saved Draft
+    // Cache Keys
+    const CACHE_KEY_TODAY = `CACHE_TODAY_POSTS_${fingerprint}`;
+    const CACHE_KEY_RANK = `CACHE_RANK_${fingerprint}`;
+
+    // =================================================================
+    // 1. INITIALIZATION: RESTORE DRAFTS AND CACHED DATA
+    // =================================================================
     useEffect(() => {
-        const loadDraft = async () => {
+        const prepare = async () => {
             if (!fingerprint) return;
+
             try {
-                const saved = await AsyncStorage.getItem(`draft_${fingerprint}`);
-                if (saved) {
-                    const data = JSON.parse(saved);
-                    // Only restore if data exists
+                // A. Restore Draft Form
+                const savedDraft = await AsyncStorage.getItem(`draft_${fingerprint}`);
+                if (savedDraft) {
+                    const data = JSON.parse(savedDraft);
                     if (data.title) setTitle(data.title);
                     if (data.message) setMessage(data.message);
                     if (data.category) setCategory(data.category);
@@ -141,19 +157,89 @@ export default function AuthorDiaryDashboard() {
                     if (data.pollOptions) setPollOptions(data.pollOptions);
                     if (data.timestamp) setLastSavedTime(data.timestamp);
                 }
+
+                // B. Restore Cached Posts (for Instant UI)
+                const savedPosts = await AsyncStorage.getItem(CACHE_KEY_TODAY);
+                if (savedPosts) {
+                    setCachedTodayPosts(JSON.parse(savedPosts));
+                }
+
+                // C. Restore Cached Rank
+                const savedRank = await AsyncStorage.getItem(CACHE_KEY_RANK);
+                if (savedRank) {
+                    const rankData = JSON.parse(savedRank);
+                    setCachedRankData(rankData); // Save raw count
+                    setUserRank(resolveUserRank(rankData)); // Update UI
+                }
+
             } catch (err) {
                 console.error("Restoration Error:", err);
             } finally {
-                // Short delay to ensure context is ready before hiding loader
                 setTimeout(() => setIsDraftRestoring(false), 500);
             }
         };
-        loadDraft();
+        prepare();
     }, [fingerprint]);
 
-    // 🔹 NEW: 2. Debounced Auto-save Effect
+
+    // =================================================================
+    // 2. DATA FETCHING (OPTIMIZED WITH SWR & CACHING)
+    // =================================================================
+    
+    // A. FETCH RANK (Manual Fetch + Cache)
     useEffect(() => {
-        // Don't save if we are currently restoring or if no user ID
+        const fetchTotalPosts = async () => {
+            if (!user?.deviceId) return;
+            
+            const total = await getUserTotalPosts(user?.deviceId);
+            
+            if (total !== null) {
+                // Online success
+                const rank = resolveUserRank(total);
+                setUserRank(rank);
+                AsyncStorage.setItem(CACHE_KEY_RANK, JSON.stringify(total));
+            } else {
+                // Offline or Error: We rely on the initial useEffect which loaded cache
+                console.log("Could not fetch new rank, using cache if available");
+            }
+        };
+        fetchTotalPosts();
+    }, [user?.deviceId]);
+
+    // B. FETCH TODAY'S POSTS (SWR + Cache + Offline Mode)
+    const { data: todayPostsData, mutate: mutateTodayPosts, error: swrError } = useSWR(
+        user?.deviceId ? `${API_BASE}/posts?author=${user.deviceId}&last24Hours=true` : null,
+        fetcher,
+        { 
+            refreshInterval: isOfflineMode ? 0 : 5000, // Stop polling if offline
+            fallbackData: cachedTodayPosts, // 👈 KEY: Use saved data first
+            onSuccess: (data) => {
+                setIsOfflineMode(false);
+                AsyncStorage.setItem(CACHE_KEY_TODAY, JSON.stringify(data));
+            },
+            onError: () => {
+                setIsOfflineMode(true);
+            }
+        }
+    );
+
+    // Merge Cache and Live Data for "Mission Log" and Status
+    // We prioritize Live Data, fallback to Cache, fallback to empty
+    const todayPosts = useMemo(() => {
+        return todayPostsData?.posts || cachedTodayPosts?.posts || [];
+    }, [todayPostsData, cachedTodayPosts]);
+
+    const postsLast24h = todayPosts.length;
+    const todayPost = todayPosts.length > 0 ? todayPosts[0] : null;
+
+    // Rank Limits
+    const maxPostsToday = userRank.postLimit;
+
+
+    // =================================================================
+    // 3. DRAFT AUTO-SAVE LOGIC
+    // =================================================================
+    useEffect(() => {
         if (isDraftRestoring || !fingerprint) return;
 
         setSaveStatus("saving");
@@ -174,12 +260,11 @@ export default function AuthorDiaryDashboard() {
             } catch (err) {
                 console.error("Save Error:", err);
             }
-        }, 1500); // Saves 1.5 seconds after you stop typing
+        }, 1500);
 
         return () => clearTimeout(timer);
     }, [title, message, category, hasPoll, pollOptions, fingerprint, isDraftRestoring]);
 
-    // 🔹 NEW: Clear All / Wipe Handler
     const handleClearAll = () => {
         Alert.alert(
             "Wipe Local Intel?",
@@ -210,34 +295,12 @@ export default function AuthorDiaryDashboard() {
         );
     };
 
-    useEffect(() => {
-        const fetchTotalPosts = async () => {
-            if (!user?.deviceId) return;
-            const total = await getUserTotalPosts(user?.deviceId);
-            const rank = resolveUserRank(total);
-            setUserRank(rank);
-        };
-        fetchTotalPosts()
-    }, [user?.deviceId]);
 
-    const maxPostsToday = userRank.postLimit;
-
-    const { data: todayPostsData, mutate: mutateTodayPosts } = useSWR(
-        user?.deviceId
-            ? `${API_BASE}/posts?author=${user.deviceId}&last24Hours=true`
-            : null,
-        fetcher,
-        { refreshInterval: 5000 }
-    );
-
-    const todayPosts = todayPostsData?.posts || [];
-    const postsLast24h = todayPosts.length;
-    const todayPost = todayPosts.length > 0 ? todayPosts[0] : null;
-
-    // 🔹 2. Notification Permissions (Handling logic moved to _layout.js)
+    // =================================================================
+    // 4. NOTIFICATIONS, ADS, & TIMERS
+    // =================================================================
     useEffect(() => {
         let isMounted = true;
-
         async function registerForPushNotificationsAsync() {
             const { status: existingStatus } = await Notifications.getPermissionsAsync();
             let finalStatus = existingStatus;
@@ -247,88 +310,49 @@ export default function AuthorDiaryDashboard() {
             }
             if (isMounted) setIsLoadingNotifications(false);
         }
-
         registerForPushNotificationsAsync();
-
-        // We only listen for foreground notifications here if needed, 
-        // but we DO NOT handle tap navigation here anymore.
         notificationListener.current = Notifications.addNotificationReceivedListener(notification => { });
-
         return () => {
             isMounted = false;
-            if (notificationListener.current) {
-                notificationListener.current.remove();
-            }
+            if (notificationListener.current) notificationListener.current.remove();
         };
     }, []);
 
-    // 3. Ad Lifecycle
-    useEffect(() => {
-        load();
-    }, [load]);
+    useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
         if (isEarnedReward) {
             const handleReward = async () => {
                 setRewardToken(`rewarded_${fingerprint}`);
                 setCanPostAgain(true);
-
-                try {
-                    await Notifications.cancelAllScheduledNotificationsAsync();
-                } catch (err) {
-                    console.error("Failed to cancel notifications:", err);
-                }
+                try { await Notifications.cancelAllScheduledNotificationsAsync(); } catch (err) { console.error("Failed to cancel notifications:", err); }
             };
             handleReward();
         }
     }, [isEarnedReward, fingerprint]);
 
-    useEffect(() => {
-        if (isClosed) {
-            load();
-        }
-    }, [isClosed, load]);
+    useEffect(() => { if (isClosed) { load(); } }, [isClosed, load]);
 
-    // 4. Cooldown logic & Notification Scheduling
     useEffect(() => {
         let interval;
         if (todayPost && (todayPost.status === 'rejected' || todayPost.status === 'approved')) {
-
             const referenceTime = new Date(todayPost.statusChangedAt || todayPost.updatedAt).getTime();
             const TWELVE_HOURS = 12 * 60 * 60 * 1000;
             const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
             const cooldownMs = todayPost.status === 'approved' ? TWENTY_FOUR_HOURS : TWELVE_HOURS;
-
             const endTime = referenceTime + cooldownMs;
 
             const scheduleDoneNotification = async (targetTime) => {
                 const triggerInSeconds = Math.floor((targetTime - new Date().getTime()) / 1000);
-
                 if (triggerInSeconds > 0 && !rewardToken) {
                     await Notifications.cancelAllScheduledNotificationsAsync();
-
-                    await Notifications.setNotificationChannelAsync('default', {
-                        name: 'Default',
-                        importance: Notifications.AndroidImportance.DEFAULT,
-                    });
-
+                    await Notifications.setNotificationChannelAsync('default', { name: 'Default', importance: Notifications.AndroidImportance.DEFAULT });
                     await Notifications.scheduleNotificationAsync({
-                        content: {
-                            title: "Cooldown Finished! 🎉",
-                            body: "Your diary cooldown is over. You can post your next entry now!",
-                            sound: true,
-                            // 🔹 This data payload will be caught by the global handler in _layout.js
-                            data: { type: "open_diary" }
-                        },
-                        trigger: {
-                            type: Notifications.SchedulableTriggerInputTypes.DATE,
-                            date: new Date(targetTime),
-                            channelId: 'default',
-                        },
+                        content: { title: "Cooldown Finished! 🎉", body: "Your diary cooldown is over. You can post your next entry now!", sound: true, data: { type: "open_diary" } },
+                        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(targetTime), channelId: 'default' },
                     });
                 }
             }
-
             scheduleDoneNotification(endTime);
 
             const calculateTime = () => {
@@ -350,12 +374,13 @@ export default function AuthorDiaryDashboard() {
             };
             calculateTime();
         }
-        return () => {
-            if (interval) clearInterval(interval);
-        };
+        return () => { if (interval) clearInterval(interval); };
     }, [todayPost, rewardToken]);
 
-    // 5. Formatting & Handlers
+
+    // =================================================================
+    // 5. HELPER FUNCTIONS (Formatting, Uploading, etc)
+    // =================================================================
     const addPollOption = () => setPollOptions([...pollOptions, ""]);
     const removePollOption = (index) => setPollOptions(pollOptions.filter((_, i) => i !== index));
     const updatePollOption = (text, index) => { const newOptions = [...pollOptions]; newOptions[index] = text; setPollOptions(newOptions); };
@@ -392,96 +417,59 @@ export default function AuthorDiaryDashboard() {
     };
 
     const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.All,
-            allowsEditing: true,
-            quality: 0.5
-        });
-
+        let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, quality: 0.5 });
         if (!result.canceled) {
             const selected = result.assets[0];
             const isVideo = selected.type === "video";
             const currentLimit = isVideo ? 15 * 1024 * 1024 : 5 * 1024 * 1024;
-
             if (selected.fileSize > currentLimit) {
                 const sizeInMB = (selected.fileSize / (1024 * 1024)).toFixed(2);
                 Alert.alert("File Too Large", `This ${selected.type} is ${sizeInMB}MB. Max: ${isVideo ? '15MB' : '5MB'}.`);
                 return;
             }
-
             setUploading(true);
-
             try {
-                const signRes = await fetch(`${API_BASE}/upload/sign`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" }
-                });
+                const signRes = await fetch(`${API_BASE}/upload/sign`, { method: "POST", headers: { "Content-Type": "application/json" } });
                 const signData = await signRes.json();
                 if (!signRes.ok) throw new Error("Signature fetch failed");
-
                 const formData = new FormData();
-                formData.append("file", {
-                    uri: selected.uri,
-                    type: isVideo ? "video/mp4" : "image/jpeg",
-                    name: isVideo ? "video.mp4" : "photo.jpg",
-                });
+                formData.append("file", { uri: selected.uri, type: isVideo ? "video/mp4" : "image/jpeg", name: isVideo ? "video.mp4" : "photo.jpg", });
                 formData.append("api_key", signData.apiKey);
                 formData.append("timestamp", signData.timestamp);
                 formData.append("signature", signData.signature);
                 formData.append("folder", "posts");
-
-                const cloudRes = await fetch(
-                    `https://api.cloudinary.com/v1_1/${signData.cloudName}/${isVideo ? "video" : "image"}/upload`,
-                    { method: "POST", body: formData }
-                );
-
+                const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/${isVideo ? "video" : "image"}/upload`, { method: "POST", body: formData });
                 const cloudData = await cloudRes.json();
-
                 if (cloudRes.ok) {
                     let finalUrl = cloudData.secure_url;
                     const transform = isVideo ? "q_auto,vc_auto" : "f_auto,q_auto";
                     finalUrl = finalUrl.replace("/upload/", `/upload/${transform}/`);
-
                     setMediaUrl(finalUrl);
                     setMediaType(isVideo ? "video" : "image");
                     setPickedImage(true);
                     Toast.show({ type: 'success', text1: 'Media attached successfully!' });
-                } else {
-                    throw new Error(cloudData.error?.message || "Cloudinary failed");
-                }
-            } catch (err) {
-                console.error(err);
-                Alert.alert("Error", "Upload failed: " + err.message);
-            } finally {
-                setUploading(false);
-            }
+                } else { throw new Error(cloudData.error?.message || "Cloudinary failed"); }
+            } catch (err) { console.error(err); Alert.alert("Error", "Upload failed: " + err.message); } finally { setUploading(false); }
         }
     };
 
     const updateStreak = async (deviceId) => {
         if (!deviceId) throw new Error("Device ID is required");
         try {
-            const res = await fetch(`${API_BASE}/users/streak`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ deviceId }),
-            })
-            if (!res.ok) {
-                const error = await res.json();
-                throw new Error(error.message || "Failed to update streak");
-            }
+            const res = await fetch(`${API_BASE}/users/streak`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deviceId }), })
+            if (!res.ok) { const error = await res.json(); throw new Error(error.message || "Failed to update streak"); }
             const data = await res.json();
             return data;
-        } catch (err) {
-            console.error("Streak update error:", err);
-            return null;
-        }
+        } catch (err) { console.error("Streak update error:", err); return null; }
     }
     const { refreshStreak } = useStreak()
     const handleSubmit = async () => {
         if (!title.trim() || !message.trim()) { Alert.alert("Error", "Title and Message are required."); return; }
+        
+        // Block submission if offline
+        if(isOfflineMode) { Alert.alert("Offline", "Cannot transmit data while offline. Draft saved."); return; }
+        
         setSubmitting(true);
-
         try {
             const response = await fetch(`${API_BASE}/posts`, {
                 method: "POST",
@@ -490,15 +478,14 @@ export default function AuthorDiaryDashboard() {
                     title, message, category, mediaUrl: mediaUrl || mediaUrlLink || null,
                     mediaType: mediaUrl ? mediaType : (mediaUrlLink?.includes("video") ? "video" : "image"),
                     hasPoll, pollMultiple, pollOptions: hasPoll ? pollOptions.filter(opt => opt.trim() !== "").map(opt => ({ text: opt })) : [],
-                    fingerprint,
-                    rewardToken
+                    fingerprint, rewardToken
                 }),
             });
             const data = await response.json();
             updateStreak(fingerprint);
             if (!response.ok) throw new Error(data.message || "Failed to create post");
             
-            // 🔹 NEW: Remove draft after successful post
+            // Remove draft after successful post
             await AsyncStorage.removeItem(`draft_${fingerprint}`);
             
             Alert.alert("Success", "Your entry has been submitted for approval!");
@@ -626,15 +613,18 @@ export default function AuthorDiaryDashboard() {
         return <View className="px-4 py-1">{finalElements}</View>;
     };
 
-    // 🔹 NEW: Mission Log UI Component
+    // 🔹 Mission Log UI Component
     const renderMissionLog = () => {
+        // Use cached/live mixed data
         if (!todayPosts || todayPosts.length === 0) return null;
 
         return (
             <View className="mt-8">
                 <View className="flex-row items-center mb-4 ml-1">
                     <Ionicons name="list" size={16} color={THEME.accent} className="mr-2" />
-                    <Text className="text-xs font-black uppercase text-gray-500 tracking-widest">Mission Log (Last 24h)</Text>
+                    <Text className="text-xs font-black uppercase text-gray-500 tracking-widest">
+                        Mission Log {isOfflineMode ? "(CACHED)" : "(Last 24h)"}
+                    </Text>
                 </View>
                 
                 {todayPosts.map((post, index) => (
@@ -660,7 +650,7 @@ export default function AuthorDiaryDashboard() {
                                 </Text>
                             </View>
                             
-                            {/* 🔹 Show Rejection Reason if it exists */}
+                            {/* Show Rejection Reason */}
                             {post.status === 'rejected' && post.rejectionReason && (
                                 <View className="mt-2 bg-red-500/5 p-2 rounded-lg border border-red-500/10">
                                     <Text className="text-[10px] text-red-400 font-medium italic">
@@ -687,7 +677,6 @@ export default function AuthorDiaryDashboard() {
         );
     };
 
-    // 🔹 NEW: Update Loading check to include draft restoration
     if (contextLoading || submitting || isDraftRestoring) {
         return <AnimeLoading 
             message={submitting ? "Submitting" : uploading ? "Uploading" : isDraftRestoring ? "Restoring" : "Loading"} 
@@ -709,10 +698,16 @@ export default function AuthorDiaryDashboard() {
                 <View className="flex-row justify-between items-end mt-4 mb-8 border-b border-gray-800 pb-6">
                     <View>
                         <View className="flex-row items-center mb-1">
-                            <View className="h-2 w-2 bg-blue-600 rounded-full mr-2" style={{ shadowColor: '#2563eb', shadowRadius: 8, shadowOpacity: 0.8 }} />
-                            <Text className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Authorized Session</Text>
+                            {/* 🔹 Offline/Online Status Indicator */}
+                            <View 
+                                className={`h-2 w-2 rounded-full mr-2 ${isOfflineMode ? 'bg-orange-500' : 'bg-blue-600'}`} 
+                                style={{ shadowColor: isOfflineMode ? '#f97316' : '#2563eb', shadowRadius: 8, shadowOpacity: 0.8 }} 
+                            />
+                            <Text className={`text-[10px] font-black uppercase tracking-[0.2em] ${isOfflineMode ? 'text-orange-500' : 'text-blue-600'}`}>
+                                {isOfflineMode ? "ARCHIVED_DATA // OFFLINE" : "LIVE_UPLINK // ACTIVE"}
+                            </Text>
                             
-                            {/* 🔹 NEW: Sync Status Badge */}
+                            {/* Sync Status Badge */}
                             <View className="ml-4 flex-row items-center bg-gray-900 px-2 py-0.5 rounded-full border border-gray-800">
                                 {saveStatus === "saving" ? (
                                     <>
@@ -737,6 +732,7 @@ export default function AuthorDiaryDashboard() {
                 </View>
 
                 {/* --- POST LIMIT / STATUS VIEW --- */}
+                {/* Checks both Live and Cached posts to determine UI state */}
                 {postsLast24h >= maxPostsToday && !canPostAgain ? (
                     <View>
                         <View style={{ backgroundColor: THEME.card, borderColor: THEME.border }} className="p-8 rounded-[40px] border items-center">
@@ -780,7 +776,6 @@ export default function AuthorDiaryDashboard() {
                             </Link>
                         </View>
                         
-                        {/* 🔹 Mission Log inside Cooldown screen */}
                         {renderMissionLog()}
                     </View>
                 ) : (
@@ -797,7 +792,7 @@ export default function AuthorDiaryDashboard() {
                             </View>
                         </View>
 
-                        {/* 🔹 Mission Log Toggle on Main Form Screen */}
+                        {/* Mission Log Toggle */}
                         <TouchableOpacity 
                             onPress={() => setShowMissionLog(!showMissionLog)}
                             className="mb-6 flex-row items-center justify-between bg-blue-600/5 p-4 rounded-2xl border border-blue-600/20"
@@ -816,7 +811,6 @@ export default function AuthorDiaryDashboard() {
                             <Text className="text-lg font-black uppercase italic text-white">{showPreview ? "Intel Preview" : "Create New Intel"}</Text>
                             
                             <View className="flex-row gap-2">
-                                {/* 🔹 NEW: Clear All Button */}
                                 <TouchableOpacity onPress={handleClearAll} className="bg-red-600/10 px-4 py-2 rounded-xl border border-red-600/20">
                                     <Text className="text-red-500 text-[10px] font-black uppercase">Clear All</Text>
                                 </TouchableOpacity>
@@ -959,5 +953,4 @@ export default function AuthorDiaryDashboard() {
             </ScrollView>
         </View>
     );
-
-}
+    }
