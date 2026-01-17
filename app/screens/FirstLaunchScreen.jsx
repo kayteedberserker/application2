@@ -22,6 +22,9 @@ import { getFingerprint } from "../../utils/device";
 
 const { width } = Dimensions.get('window');
 
+// 🔹 Blacklisted names that cannot be used
+const FORBIDDEN_NAMES = ["admin", "system", "the admin", "the system", "administrator", "moderator"];
+
 export default function FirstLaunchScreen() {
   const [username, setUsername] = useState("");
   const [recoverId, setRecoverId] = useState(""); 
@@ -80,8 +83,13 @@ export default function FirstLaunchScreen() {
 
     // Validation
     if (!isRecoveryMode) {
-        if (!cleanUsername || cleanUsername.length < 3 || cleanUsername === "Admin") {
+        if (!cleanUsername || cleanUsername.length < 3) {
             return notify("Invalid Username", "Username must be at least 3 characters.");
+        }
+        
+        // 🔹 Check against forbidden names (Case Insensitive)
+        if (FORBIDDEN_NAMES.includes(cleanUsername.toLowerCase())) {
+            return notify("Restricted Alias", "This callsign is reserved for system authority.");
         }
     } else {
         if (!cleanRecoverId) {
@@ -89,7 +97,7 @@ export default function FirstLaunchScreen() {
         }
     }
 
-  setIsProcessing(true);
+    setIsProcessing(true);
     try {
       const currentDeviceId = await getFingerprint();
       const pushToken = await registerForPushNotificationsAsync();
@@ -116,7 +124,7 @@ export default function FirstLaunchScreen() {
 
       const userData = {
         deviceId: targetId,
-        username: (data.username || cleanUsername).toUpperCase(),
+        username: data.username || cleanUsername, // 🔹 No longer forced to uppercase
         pushToken,
       };
 
@@ -174,7 +182,7 @@ export default function FirstLaunchScreen() {
         {isRecoveryMode ? (
             <TextInput
                 style={{ backgroundColor: THEME.card, borderColor: '#a855f7', color: THEME.text}}
-                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic uppercase"
+                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic"
                 placeholder="PASTE DEVICE ID HERE"
                 placeholderTextColor={THEME.textSecondary + '80'}
                 autoCapitalize="none"
@@ -186,10 +194,10 @@ export default function FirstLaunchScreen() {
         ) : (
             <TextInput
                 style={{ backgroundColor: THEME.card, borderColor: THEME.border, color: THEME.text }}
-                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic uppercase"
+                className="w-full border-2 rounded-2xl px-5 py-5 mb-4 font-black italic"
                 placeholder="ENTER USERNAME..."
                 placeholderTextColor={THEME.textSecondary + '80'}
-                autoCapitalize="characters"
+                autoCapitalize="none" // 🔹 Respect user input case
                 autoCorrect={false}
                 spellCheck={false}
                 value={username}
@@ -243,4 +251,4 @@ export default function FirstLaunchScreen() {
       </View>
     </View>
   );
-}
+        }
