@@ -149,10 +149,7 @@ export default function PostsViewer() {
         );
     };
 
-    // Only show loading screen if we have NO data at all (not even cache)
-    if (!ready && !cachedData) {
-        return <AnimeLoading message="Loading Posts" subMessage="Preparing content" />;
-    }
+    
 
     const ListHeader = () => (
         <View className="mb-10 pb-2">
