@@ -12,10 +12,9 @@ export const AdConfig = {
     ? 'ca-app-pub-8021671365048667/6872598240'
     : TestIds.INTERSTITIAL,
 
-  rewarded: TestIds.REWARDED, 
-    //IS_PRODUCTION
- //   ? 'ca-app-pub-8021671365048667/5559516575'
-  //  : TestIds.REWARDED,
+  rewarded: IS_PRODUCTION
+          ? 'ca-app-pub-8021671365048667/5559516575'
+          : TestIds.REWARDED,
 
   appOpen: IS_PRODUCTION
     ? 'ca-app-pub-8021671365048667/8591846359' // App Open ID
