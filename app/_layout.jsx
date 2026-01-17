@@ -12,7 +12,7 @@ import { AppState, BackHandler, DeviceEventEmitter, Platform, StatusBar, View } 
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from 'react-native-toast-message';
 import { InterstitialAd, AdEventType, TestIds, MobileAds } from 'react-native-google-mobile-ads';
-import { Audio } from 'expo-av'; // 🔹 Added for sound
+import { Audio } from 'expo-av'; 
 
 import AnimeLoading from "../components/AnimeLoading";
 import { loadAppOpenAd, showAppOpenAd } from "../components/appOpenAd";
@@ -23,11 +23,10 @@ import "./globals.css";
 
 SplashScreen.preventAutoHideAsync();
 
-// 🔹 AD CONFIGURATION
 const FIRST_AD_DELAY_MS = 30000; 
 const COOLDOWN_MS = 180000;      
 const ADMIN_DEVICE_ID = "4bfe2b53-7591-462f-927e-68eedd7a6447"; 
-const ADMIN_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3'; // Futuristic Ping
+const ADMIN_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3'; 
 
 const INTERSTITIAL_ID = __DEV__ ? TestIds.INTERSTITIAL : AdConfig.interstitial;
 
@@ -43,33 +42,22 @@ Notifications.setNotificationHandler({
     }),
 });
 
-// 🔹 HELPER: Load Interstitial
 const loadInterstitial = () => {
     if (interstitial) return; 
-
-    const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_ID, {
-        requestNonPersonalizedAdsOnly: true,
-    });
-
-    ad.addAdEventListener(AdEventType.LOADED, () => {
-        interstitialLoaded = true;
-    });
-
+    const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_ID, { requestNonPersonalizedAdsOnly: true });
+    ad.addAdEventListener(AdEventType.LOADED, () => { interstitialLoaded = true; });
     ad.addAdEventListener(AdEventType.CLOSED, () => {
         interstitialLoaded = false;
         interstitial = null;
         lastShownTime = Date.now(); 
-        // 🔹 Notify the app that the cooldown timer has started
         DeviceEventEmitter.emit("adClosedTimerStart");
         loadInterstitial(); 
     });
-
-    ad.addAdEventListener(AdEventType.ERROR, (err) => {
+    ad.addAdEventListener(AdEventType.ERROR, () => {
         interstitial = null;
         interstitialLoaded = false;
         setTimeout(loadInterstitial, 30000);
     });
-
     ad.load();
     interstitial = ad;
 };
@@ -80,8 +68,6 @@ async function registerForPushNotificationsAsync() {
         await Notifications.setNotificationChannelAsync('default', {
             name: 'default',
             importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#FF231F7C',
         });
     }
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -108,44 +94,44 @@ function RootLayoutContent() {
     
     const [isSyncing, setIsSyncing] = useState(true);
     const [isUpdating, setIsUpdating] = useState(false); 
+    const [appReady, setAppReady] = useState(false); // 🔹 Tracks if Splash can hide
     
     const appState = useRef(AppState.currentState);
     const lastProcessedNotificationId = useRef(null);
     const hasHandledRedirect = useRef(false);
     const soundTimer = useRef(null);
 
-    // 🔹 Derived Admin Status
     const isAdmin = user?.deviceId === ADMIN_DEVICE_ID;
 
-    // 🔹 Admin Sound Player
     const playAdminSound = async () => {
         try {
             const { sound } = await Audio.Sound.createAsync({ uri: ADMIN_SOUND_URL });
             await sound.playAsync();
-            // Automatically unload sound from memory when finished
-            sound.setOnPlaybackStatusUpdate((status) => {
-                if (status.didJustFinish) sound.unloadAsync();
-            });
+            sound.setOnPlaybackStatusUpdate((status) => { if (status.didJustFinish) sound.unloadAsync(); });
         } catch (e) { console.log("Sound error:", e); }
     };
 
-    // --- 1. AD LOGIC ---
+    // --- 1. AD INITIALIZATION & APP OPEN TRIGGER ---
     useEffect(() => {
         if (Platform.OS === 'web') return;
 
         MobileAds().initialize().then(() => {
-            loadAppOpenAd();
+            // Load both immediately
             loadInterstitial();
+            // 🔹 Pass a callback to show the ad the INSTANT it's loaded during cold start
+            loadAppOpenAd(() => {
+                showAppOpenAd();
+            });
         });
 
         const sub = AppState.addEventListener('change', nextState => {
+            // 🔹 RESUME TRIGGER: Improved check to catch "after a long time"
             if (appState.current.match(/inactive|background/) && nextState === 'active') {
                 showAppOpenAd();
             }
             appState.current = nextState;
         });
 
-        // 🔹 Toast Trigger on Navigation/Back
         const interstitialListener = DeviceEventEmitter.addListener("tryShowInterstitial", () => {
             const now = Date.now();
             const timeSinceLast = now - lastShownTime;
@@ -153,13 +139,7 @@ function RootLayoutContent() {
 
             if (isAdmin) {
                 if (remaining > 0) {
-                    Toast.show({
-                        type: 'info',
-                        text1: 'Ad Cooldown',
-                        text2: `Available in ${remaining}s`,
-                        position: 'bottom',
-                        visibilityTime: 1500,
-                    });
+                    Toast.show({ type: 'info', text1: 'Ad Cooldown', text2: `Available in ${remaining}s`, position: 'bottom', visibilityTime: 1500 });
                 } else if (!interstitialLoaded) {
                     Toast.show({ type: 'error', text1: 'Ready but Not Loaded', text2: 'Waiting for AdMob fill...' });
                 }
@@ -170,26 +150,14 @@ function RootLayoutContent() {
             }
         });
 
-        // 🔹 Sound Trigger Logic: Set a timer when an ad closes
         const timerListener = DeviceEventEmitter.addListener("adClosedTimerStart", () => {
             if (!isAdmin) return;
-            
             if (soundTimer.current) clearTimeout(soundTimer.current);
-            
-            // Set timer to play sound exactly when cooldown ends
             soundTimer.current = setTimeout(() => {
                 playAdminSound();
                 Toast.show({ type: 'success', text1: 'Ad System Ready', text2: 'Interstitial is now available.' });
             }, COOLDOWN_MS);
         });
-
-        // Handle initial load delay sound
-        if (isAdmin) {
-            const initialRemaining = COOLDOWN_MS - (Date.now() - lastShownTime);
-            if (initialRemaining > 0) {
-                soundTimer.current = setTimeout(playAdminSound, initialRemaining);
-            }
-        }
 
         const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
             if (router.canGoBack()) {
@@ -209,7 +177,7 @@ function RootLayoutContent() {
         };
     }, [isAdmin, router]);
 
-    // --- 2. DEEP LINKING ---
+    // --- 2. CORE SYSTEM EFFECTS ---
     const url = Linking.useURL(); 
     useEffect(() => {
         if (url && !isSyncing && !isUpdating && !hasHandledRedirect.current) {
@@ -222,7 +190,6 @@ function RootLayoutContent() {
         }
     }, [url, isSyncing, isUpdating]);
 
-    // --- 3. EAS UPDATES ---
     useEffect(() => {
         async function onFetchUpdateAsync() {
             if (__DEV__) return; 
@@ -245,7 +212,6 @@ function RootLayoutContent() {
 
     useEffect(() => { refreshStreak(); }, [pathname, refreshStreak]);
 
-    // --- 4. SYNC & PUSH TOKEN ---
     useEffect(() => {
         async function performSync() {
             if (!fontsLoaded || isUpdating) return; 
@@ -259,12 +225,26 @@ function RootLayoutContent() {
                     });
                 } catch (err) { }
             }
+            // Set AppReady true when font and sync are done
+            setAppReady(true);
             setTimeout(() => setIsSyncing(false), 1500);
         }
         performSync();
     }, [fontsLoaded, user?.deviceId, isUpdating]);
 
-    // --- 5. NOTIFICATIONS ---
+    // --- 3. SPLASH SCREEN HIDER (COUPLED WITH AD) ---
+    useEffect(() => {
+        if (appReady || fontError) {
+            // Give AdMob 1 extra second to try and show the Cold Start ad 
+            // before we reveal the main UI
+            setTimeout(async () => {
+                showAppOpenAd(); 
+                await SplashScreen.hideAsync();
+            }, 1000);
+        }
+    }, [appReady, fontError]);
+
+    // --- 4. NOTIFICATIONS ---
     useEffect(() => {
         if (isSyncing || isUpdating) return;
         const handleNotificationResponse = async (response) => {
@@ -292,8 +272,6 @@ function RootLayoutContent() {
         const responseSub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
         return () => responseSub.remove();
     }, [isSyncing, isUpdating]);
-
-    useEffect(() => { if (fontsLoaded || fontError) SplashScreen.hideAsync(); }, [fontsLoaded, fontError]);
 
     if (!fontsLoaded || isSyncing || isUpdating) {
         return <AnimeLoading message={isUpdating ? "CORE_SYNC" : "LOADING_PAGE"} subMessage={isUpdating ? "Optimizing system transmissions..." : "Syncing Account"} />;
