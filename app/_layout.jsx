@@ -5,12 +5,14 @@ import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from 'expo-updates'; 
-import AsyncStorage from '@react-native-async-storage/async-storage'; // 👈 Added for persistent notification tracking
+import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import { useColorScheme } from "nativewind";
 import { useEffect, useRef, useState } from "react";
 import { AppState, BackHandler, DeviceEventEmitter, Platform, StatusBar, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from 'react-native-toast-message';
+import { InterstitialAd, AdEventType, TestIds } from 'react-native-google-mobile-ads';
+
 import AnimeLoading from "../components/AnimeLoading";
 import { loadAppOpenAd, showAppOpenAd } from "../components/appOpenAd";
 import { StreakProvider, useStreak } from "../context/StreakContext";
@@ -20,11 +22,23 @@ import "./globals.css";
 
 SplashScreen.preventAutoHideAsync();
 
-const FIRST_AD_DELAY_MS = 30000; 
-const COOLDOWN_MS = 480000; 
+// 🔹 AD CONFIGURATION
+const FIRST_AD_DELAY_MS = 30000; // First ad comes after 30 seconds
+const COOLDOWN_MS = 180000;      // Subsequent ads every 3 minutes
 
+// Use Test ID in Dev, Real ID in Prod
+const INTERSTITIAL_ID = __DEV__
+    ? TestIds.INTERSTITIAL 
+    : AdConfig.interstitial;
+
+// 🔹 MATH FIX: Offset the start time so the first check passes after 30s, not 180s
+// Logic: If we want to trigger when (Now - Last) > 180,000...
+// We set 'Last' to effectively be "150,000ms ago" right now.
+// So in 30,000ms, the diff will be 180,000.
 let lastShownTime = Date.now() - (COOLDOWN_MS - FIRST_AD_DELAY_MS);
+
 let interstitial = null;
+let interstitialLoaded = false;
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -65,6 +79,29 @@ async function registerForPushNotificationsAsync() {
     }
 }
 
+// 🔹 HELPER: Load Interstitial
+const loadInterstitial = () => {
+    if (interstitial) return; // Already exists
+
+    const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_ID, {
+        requestNonPersonalizedAdsOnly: true,
+    });
+
+    ad.addAdEventListener(AdEventType.LOADED, () => {
+        interstitialLoaded = true;
+    });
+
+    ad.addAdEventListener(AdEventType.CLOSED, () => {
+        interstitialLoaded = false;
+        interstitial = null;
+        lastShownTime = Date.now(); // Reset timer to NOW
+        loadInterstitial(); // Pre-load the next one
+    });
+
+    ad.load();
+    interstitial = ad;
+};
+
 function RootLayoutContent() {
     const { refreshStreak } = useStreak();
     const { colorScheme } = useColorScheme();
@@ -78,7 +115,7 @@ function RootLayoutContent() {
     
     const appState = useRef(AppState.currentState);
     const lastProcessedNotificationId = useRef(null);
-    const hasHandledRedirect = useRef(false); // 👈 Tracks if we navigated already
+    const hasHandledRedirect = useRef(false);
 
     // --- 1. DEEP LINKING HANDLER ---
     const url = Linking.useURL(); 
@@ -120,21 +157,39 @@ function RootLayoutContent() {
         "SpaceGroteskBold": require("../assets/fonts/SpaceGrotesk.ttf"),
     });
 
-    // --- 3. AD INITIALIZATION ---
+    // --- 3. AD LOGIC ---
     useEffect(() => {
         if (Platform.OS === 'web') return;
 
-        const setupAds = async () => {
-        };
-        setupAds();
+        // A. Load App Open Ad
+        loadAppOpenAd();
 
+        // B. Load Interstitial Ad
+        loadInterstitial();
+
+        // C. Setup AppOpen Listener (Background -> Active)
         const sub = AppState.addEventListener('change', nextState => {
             if (appState.current.match(/inactive|background/) && nextState === 'active') {
                 showAppOpenAd();
             }
             appState.current = nextState;
         });
-        return () => sub.remove();
+
+        // D. Setup Interstitial Trigger Listener (Listens to Stack change)
+        const interstitialListener = DeviceEventEmitter.addListener("tryShowInterstitial", () => {
+            const now = Date.now();
+            const timeSinceLast = now - lastShownTime;
+
+            // Only show if: Loaded AND Timer passed AND App running long enough
+            if (interstitialLoaded && interstitial && timeSinceLast > COOLDOWN_MS) {
+                interstitial.show();
+            }
+        });
+
+        return () => {
+            sub.remove();
+            interstitialListener.remove();
+        };
     }, []);
 
     useEffect(() => {
@@ -162,7 +217,7 @@ function RootLayoutContent() {
         performSync();
     }, [fontsLoaded, user?.deviceId, isUpdating]);
 
-    // --- 5. NOTIFICATION INTERACTION (STRENGTHENED & FIXED) ---
+    // --- 5. NOTIFICATION INTERACTION ---
     useEffect(() => {
         if (isSyncing || isUpdating) return;
 
@@ -170,27 +225,23 @@ function RootLayoutContent() {
             const notificationId = response?.notification?.request?.identifier;
             if (!notificationId) return;
 
-            // Check if this ID has already been handled in the past (persistent)
             const alreadyHandledId = await AsyncStorage.getItem('last_handled_notification_id');
             if (alreadyHandledId === notificationId || lastProcessedNotificationId.current === notificationId) {
                 return;
             }
 
-            // Mark as handled both in memory and storage
             lastProcessedNotificationId.current = notificationId;
             await AsyncStorage.setItem('last_handled_notification_id', notificationId);
 
             const data = response?.notification?.request?.content?.data;
             if (!data) return;
 
-            // 🛠️ EXTRACTING POST ID (Checking all possible nestings)
             const targetId = data?.postId || data?.body?.postId || data?.id;
             const type = data?.type || data?.body?.type;
 
             if (targetId) {
                 hasHandledRedirect.current = true;
                 setTimeout(() => {
-                    // Force path as string
                     router.push(`/post/${targetId}`);
                 }, 800);
             } 
@@ -200,7 +251,6 @@ function RootLayoutContent() {
             }
         };
 
-        // Cold Start Check (Now using the async storage aware handler)
         Notifications.getLastNotificationResponseAsync().then(response => {
             if (response && !hasHandledRedirect.current) {
                 handleNotificationResponse(response);
@@ -232,6 +282,7 @@ function RootLayoutContent() {
                 barStyle={isDark ? "light-content" : "dark-content"}
                 backgroundColor={isDark ? "#0a0a0a" : "#ffffff"}
             />
+            {/* Stack sends "tryShowInterstitial" event on screen changes */}
             <Stack
                 screenOptions={{
                     headerShown: false,
