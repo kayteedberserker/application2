@@ -33,7 +33,7 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
     retryTimer.current = setTimeout(() => {
       setFailed(false);
       setRetryKey(prev => prev + 1); // Incrementing key forces the BannerAd to remount
-    }, 5000); 
+    }, 15000); 
 
     // Optional: setFailed(true) if you want to hide it until the next retry
     // For now, we keep the space reserved to prevent UI jumping
