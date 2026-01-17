@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, useRouter, usePathname } from "expo-router"; // 🔹 Added useRouter/usePathname
 import { useColorScheme as useNativeWind } from "nativewind";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -10,7 +10,8 @@ import {
 	StatusBar,
 	TouchableOpacity,
 	useColorScheme as useSystemScheme,
-	View
+	View,
+	BackHandler // 🔹 Added BackHandler
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AnimeLoading from "../../components/AnimeLoading";
@@ -21,56 +22,65 @@ import CategoryNav from "./../../components/CategoryNav";
 import TopBar from "./../../components/Topbar";
 
 export default function MainLayout() {
-	;
+	const router = useRouter();
+	const pathname = usePathname();
 	const { colorScheme, setColorScheme } = useNativeWind();
-	const systemScheme = useSystemScheme(); // ✅ system theme
+	const systemScheme = useSystemScheme(); 
 
 	const [lastOffset, setLastOffset] = useState(0);
 	const [isNavVisible, setIsNavVisible] = useState(true);
 	const [showTop, setShowTop] = useState(false);
+	
+	// 🔹 Track active category index for back button logic
+	const activeCategoryIndex = useRef(0);
 
 	const navY = useRef(new Animated.Value(0)).current;
 	const { user, contextLoading } = useUser();
 
 	useEffect(() => {
-		// We only ping if we have a deviceId (meaning the user has registered)
 		if (user?.deviceId) {
 			const updateActivity = async () => {
 				try {
-					// This happens in the background
 					await fetch("https://oreblogda.com/api/mobile/app-open", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify({ deviceId: user.deviceId }),
 					});
-				} catch (err) {
-					// We don't alert the user for analytics failures
-					// console.error("Failed to update lastActive:", err);
-				}
+				} catch (err) {}
 			};
-
 			updateActivity();
 		}
-	}, [user?.deviceId]); // Runs once on mount, and again if user logs in
+	}, [user?.deviceId]);
 
-	// ✅ Only redirect if we ARE NOT loading context AND we have no user
-	if (!contextLoading && !user) {
-		return <Redirect href="/screens/FirstLaunchScreen" />;
-	}
-
-	// While context is fetching from AsyncStorage, show the loader with return
-	if (contextLoading) {
-		return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />;
-	}
-
-	const insets = useSafeAreaInsets();
-
-	// ✅ FIX: Sync system theme → NativeWind
+	// ✅ Sync system theme → NativeWind
 	useEffect(() => {
 		if (systemScheme) {
 			setColorScheme(systemScheme);
 		}
 	}, [systemScheme]);
+
+	// 🔹 Listen for category changes to update our back-button reference
+	useEffect(() => {
+		const sub = DeviceEventEmitter.addListener("categoryChanged", (index) => {
+			activeCategoryIndex.current = index;
+		});
+		return () => sub.remove();
+	}, []);
+
+	// 🔹 HARDWARE BACK BUTTON LOGIC
+	useEffect(() => {
+		const onBackPress = () => {
+			// If we are on the Home tab but NOT on the first category (Home index 0)
+			if (pathname === "/" && activeCategoryIndex.current !== 0) {
+				DeviceEventEmitter.emit("jumpToCategory", "Home");
+				return true; // Prevents app exit
+			}
+			return false; // Default behavior (exit or go back in stack)
+		};
+
+		BackHandler.addEventListener("hardwareBackPress", onBackPress);
+		return () => BackHandler.removeEventListener("hardwareBackPress", onBackPress);
+	}, [pathname]);
 
 	// Scroll listener
 	useEffect(() => {
@@ -96,39 +106,36 @@ export default function MainLayout() {
 					}).start();
 				}
 			}
-
 			setLastOffset(offsetY);
 		});
-
 		return () => subscription.remove();
 	}, [lastOffset, isNavVisible]);
 
+	if (!contextLoading && !user) {
+		return <Redirect href="/screens/FirstLaunchScreen" />;
+	}
+
+	if (contextLoading) {
+		return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />;
+	}
+
+	const insets = useSafeAreaInsets();
 	const isDark = colorScheme === "dark";
 	const handleBackToTop = () => DeviceEventEmitter.emit("doScrollToTop");
 
 	return (
 		<>
-			{/* STATUS BAR */}
 			<StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 			
-			{/* HEADER */}
-			<SafeAreaView
-				style={{
-					zIndex: 100,
-					maxHeight: 130,
-				}}>
+			<SafeAreaView style={{ zIndex: 100, maxHeight: 130 }}>
 				<TopBar isDark={isDark} />
-				<Animated.View
-					style={{
-						transform: [{ translateY: navY }],
-						zIndex: 10,
-					}}
-				>
+				<Animated.View style={{ transform: [{ translateY: navY }], zIndex: 10 }}>
 					<CategoryNav isDark={isDark} />
 				</Animated.View>
 			</SafeAreaView>
+
 			<UpdateHandler />
-			{/* TABS */}
+
             <Tabs
                 screenOptions={{
                     headerShown: false,
@@ -146,7 +153,7 @@ export default function MainLayout() {
                         position: "absolute",
                         bottom: insets.bottom + 15,
                         height: 60, 
-                        transform: [{ translateX: '15%' }], // 🛡️ PRESERVED AS REQUESTED
+                        transform: [{ translateX: '15%' }], 
                         width: "70%",
                         alignSelf: "center",
                         borderRadius: 25,
@@ -168,11 +175,7 @@ export default function MainLayout() {
                     options={{
                         title: "Home",
                         tabBarIcon: ({ color, focused }) => (
-                            <Ionicons 
-                                name={focused ? "home" : "home-outline"} 
-                                size={22} 
-                                color={color} 
-                            />
+                            <Ionicons name={focused ? "home" : "home-outline"} size={22} color={color} />
                         ),
                     }}
                 />
@@ -181,11 +184,7 @@ export default function MainLayout() {
                     options={{
                         title: "Ore Diary",
                         tabBarIcon: ({ color, focused }) => (
-                            <Ionicons 
-                                name={focused ? "add-circle" : "add-circle-outline"} 
-                                size={24} 
-                                color={color} 
-                            />
+                            <Ionicons name={focused ? "add-circle" : "add-circle-outline"} size={24} color={color} />
                         ),
                     }}
                 />
@@ -194,49 +193,23 @@ export default function MainLayout() {
                     options={{
                         title: "Profile",
                         tabBarIcon: ({ color, focused }) => (
-                            <Ionicons 
-                                name={focused ? "person" : "person-outline"} 
-                                size={22} 
-                                color={color} 
-                            />
+                            <Ionicons name={focused ? "person" : "person-outline"} size={22} color={color} />
                         ),
                     }}
                 />
-
-                {/* Hidden Routes */}
                 <Tabs.Screen name="post/[id]" options={{ href: null }} />
                 <Tabs.Screen name="author/[id]" options={{ href: null }} />
                 <Tabs.Screen name="categories/[id]" options={{ href: null }} />
             </Tabs>
 
-			{/* FLOATING ACTION INTERFACE */}
-			<View
-				style={{
-					position: "absolute",
-					bottom: insets.bottom + 20,
-					right: 20,
-					gap: 12,
-					alignItems: "center",
-					zIndex: 1000,
-				}}
-			>
+			<View style={{ position: "absolute", bottom: insets.bottom + 20, right: 20, gap: 12, alignItems: "center", zIndex: 1000 }}>
 				{showTop && (
 					<TouchableOpacity
 						onPress={handleBackToTop}
 						activeOpacity={0.7}
 						style={{
-							width: 48,
-							height: 48,
-							borderRadius: 16,
-							justifyContent: "center",
-							alignItems: "center",
-							backgroundColor: "#111111",
-							borderWidth: 1.5,
-							borderColor: "#1e293b",
-							elevation: 5,
-							shadowColor: "#000",
-							shadowOffset: { width: 0, height: 2 },
-							shadowOpacity: 0.2,
+							width: 48, height: 48, borderRadius: 16, justifyContent: "center", alignItems: "center",
+							backgroundColor: "#111111", borderWidth: 1.5, borderColor: "#1e293b", elevation: 5,
 						}}
 					>
 						<Ionicons name="chevron-up" size={24} color="#3b82f6" />
@@ -244,29 +217,13 @@ export default function MainLayout() {
 				)}
 
 				<TouchableOpacity
-					onPress={() =>
-						Linking.openURL(
-							"https://whatsapp.com/channel/0029VbBkiupCRs1wXFWtDG3N"
-						)
-					}
+					onPress={() => Linking.openURL("https://whatsapp.com/channel/0029VbBkiupCRs1wXFWtDG3N")}
 					activeOpacity={0.8}
-					style={{
-						elevation: 8,
-						shadowColor: "#22c55e",
-						shadowOffset: { width: 0, height: 4 },
-						shadowOpacity: 0.3,
-						shadowRadius: 8,
-					}}
+					style={{ elevation: 8, shadowColor: "#22c55e", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }}
 				>
 					<Image
 						source={require("../../assets/images/whatsapp.png")}
-						style={{
-							width: 52,
-							height: 52,
-							borderRadius: 18,
-							borderWidth: 2,
-							borderColor: "#111111"
-						}}
+						style={{ width: 52, height: 52, borderRadius: 18, borderWidth: 2, borderColor: "#111111" }}
 					/>
 				</TouchableOpacity>
 			</View>
