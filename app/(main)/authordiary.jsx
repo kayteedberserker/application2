@@ -634,7 +634,7 @@ export default function AuthorDiaryDashboard() {
                         className="mb-3 p-4 rounded-2xl border flex-row items-center"
                     >
                         <View className="flex-1">
-                            <Text className="text-white font-black text-sm uppercase mb-1" numberOfLines={1}>{post.title}</Text>
+                            <Text className="font-black text-sm uppercase mb-1" numberOfLines={1}>{post.title}</Text>
                             <View className="flex-row items-center">
                                 <View 
                                     className={`w-1.5 h-1.5 rounded-full mr-2 ${
@@ -799,7 +799,7 @@ export default function AuthorDiaryDashboard() {
                         >
                             <View className="flex-row items-center">
                                 <Ionicons name="receipt-outline" size={20} color={THEME.accent} />
-                                <Text className="text-white font-black uppercase italic ml-3 text-xs">Recent Mission History</Text>
+                                <Text className="font-black uppercase italic ml-3 text-xs">Recent Mission History</Text>
                             </View>
                             <Ionicons name={showMissionLog ? "chevron-up" : "chevron-down"} size={20} color={THEME.accent} />
                         </TouchableOpacity>
@@ -915,7 +915,7 @@ export default function AuthorDiaryDashboard() {
                                 <View style={{ backgroundColor: THEME.card, borderColor: hasPoll ? THEME.accent : THEME.border }} className="p-6 rounded-3xl border-2 mt-4">
                                     <View className="flex-row justify-between items-center mb-4">
                                         <Text className="font-black uppercase tracking-widest text-[11px]">Deploy Poll Module</Text>
-                                        <Switch value={hasPoll} onValueChange={setHasPoll} trackColor={{ true: '#2563eb' }} thumbColor="white" />
+                                        <Switch value={hasPoll} onValueChange={setHasPoll} trackColor={{ true: '#2563eb' }} thumbColor=THEME.text />
                                     </View>
                                     {hasPoll && (
                                         <View className="space-y-3">
@@ -925,7 +925,7 @@ export default function AuthorDiaryDashboard() {
                                                         placeholder={`Option ${i + 1}`}
                                                         value={option}
                                                         onChangeText={(t) => updatePollOption(t, i)}
-                                                        style={{ backgroundColor: '#000', borderColor: THEME.border, color: THEME.text}}
+                                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border, color: THEME.text}}
                                                         className="flex-1 border p-4 rounded-xl text-white font-bold"
                                                     />
                                                     {pollOptions.length > 2 && <TouchableOpacity onPress={() => removePollOption(i)}><Ionicons name="close-circle" size={24} color={THEME.red} /></TouchableOpacity>}
