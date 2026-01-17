@@ -1,13 +1,31 @@
 import { usePathname, useRouter } from "expo-router";
-import { FlatList, TouchableOpacity, View } from "react-native";
+import { useEffect, useState, useRef } from "react";
+import { FlatList, TouchableOpacity, View, DeviceEventEmitter } from "react-native";
 import { Text } from "./Text";
 
-const categories = ["News", "Memes", "Polls", "Review", "Gaming"];
+// 🔹 Added "Home" to the start to match the PagerView order
+const categories = ["Home", "News", "Memes", "Polls", "Review", "Gaming"];
 
 export default function CategoryNav({ isDark }) {
-    // Keep your original functions and hooks
     const router = useRouter();
     const pathname = usePathname();
+    const flatListRef = useRef(null);
+    
+    // 🔹 Local state to track which category is active via swipe
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    useEffect(() => {
+        // 1. Listen for when the user swipes the PagerView
+        const sub = DeviceEventEmitter.addListener("categoryChanged", (categoryName) => {
+            const index = categories.indexOf(categoryName);
+            if (index !== -1) {
+                setActiveIndex(index);
+                // 🔹 Automatically scroll the nav bar to the active item
+                flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+            }
+        });
+        return () => sub.remove();
+    }, []);
 
     return (
         <View 
@@ -19,11 +37,11 @@ export default function CategoryNav({ isDark }) {
             }}
         >
             <FlatList
+                ref={flatListRef}
                 horizontal
                 data={categories}
                 keyExtractor={(item) => item}
                 showsHorizontalScrollIndicator={false}
-                // Keep your original props for Android touch stability
                 contentContainerStyle={{ 
                     paddingHorizontal: 3, 
                     alignItems: 'center',
@@ -31,15 +49,20 @@ export default function CategoryNav({ isDark }) {
                 }}
                 scrollEnabled={true}
                 nestedScrollEnabled={true}
-                renderItem={({ item }) => {
-                    // Keep your original logic
+                renderItem={({ item, index }) => {
                     const catSlug = item.toLowerCase().replace("/", "-");
-                    const isActive = pathname.includes(catSlug);
+                    
+                    // 🔹 Highlight based on either URL or the current Swipe Index
+                    const isActive = activeIndex === index || (item !== "Home" && pathname.includes(catSlug));
                     const displayName = item === "Videos/Edits" ? "Videos" : item;
 
                     return (
                         <TouchableOpacity
-                            onPress={() => router.push(`/categories/${catSlug}`)}
+                            onPress={() => {
+                                setActiveIndex(index);
+                                // 🔹 Tell the PagerView in index.js to jump to this page
+                                DeviceEventEmitter.emit("jumpToCategory", item);
+                            }}
                             activeOpacity={0.7}
                             style={{ marginRight: 8 }}
                             className={`px-4 py-2 rounded-lg relative ${
@@ -54,7 +77,6 @@ export default function CategoryNav({ isDark }) {
                                 {displayName}
                             </Text>
 
-                            {/* Tactical Corners - Only for Active (Visual UI) */}
                             {isActive && (
                                 <>
                                     <View style={{ position: 'absolute', top: 0, left: 0, width: 4, height: 4, borderTopWidth: 1, borderLeftWidth: 1, borderColor: 'white' }} />
