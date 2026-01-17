@@ -20,7 +20,7 @@ import "./globals.css";
 
 SplashScreen.preventAutoHideAsync();
 
-const FIRST_AD_DELAY_MS = 120000; 
+const FIRST_AD_DELAY_MS = 30000; 
 const COOLDOWN_MS = 480000; 
 
 let lastShownTime = Date.now() - (COOLDOWN_MS - FIRST_AD_DELAY_MS);
