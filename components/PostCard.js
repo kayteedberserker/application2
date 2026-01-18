@@ -106,12 +106,12 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
     const [author, setAuthor] = useState({ name: post.authorName, image: null, streak: null });
 
     // Media Loading States
-    const [loadMedia, setLoadMedia] = useState(false); // Controls data saver
+    const [loadMedia, setLoadMedia] = useState(false); 
     const [videoReady, setVideoReady] = useState(false);
     const [tikTokReady, setTikTokReady] = useState(false);
     const [imageReady, setImageReady] = useState(false);
 
-    // 🔹 Reanimated Shared Values for Pro Zoom
+    // 🔹 Reanimated Shared Values
     const scale = useSharedValue(1);
     const savedScale = useSharedValue(1);
     const translateX = useSharedValue(0);
@@ -119,7 +119,6 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
     const savedTranslateX = useSharedValue(0);
     const savedTranslateY = useSharedValue(0);
 
-    // 1. Pinch Gesture (Zoom)
     const pinchGesture = Gesture.Pinch()
         .onUpdate((event) => {
             scale.value = savedScale.value * event.scale;
@@ -137,7 +136,6 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
             }
         });
 
-    // 2. Pan Gesture (Moving image while zoomed)
     const panGesture = Gesture.Pan()
         .onUpdate((event) => {
             if (scale.value > 1) {
@@ -157,7 +155,6 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
             }
         });
 
-    // 3. Double Tap to Reset
     const doubleTapGesture = Gesture.Tap()
         .numberOfTaps(2)
         .onEnd(() => {
@@ -169,10 +166,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
             savedTranslateY.value = 0;
         });
 
-    // 4. Combine Gestures
     const composed = Gesture.Exclusive(doubleTapGesture, Gesture.Simultaneous(pinchGesture, panGesture));
 
-    // 5. Animated Style (Corrected Transform Order)
     const animatedStyle = useAnimatedStyle(() => {
         return {
             transform: [
@@ -184,7 +179,6 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
     });
 
     const closeLightbox = () => {
-        // Reset zoom values before closing
         scale.value = withTiming(1);
         translateX.value = withTiming(0);
         translateY.value = withTiming(0);
@@ -315,56 +309,48 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         }
     };
 
-    // --- CUSTOM TEXT PARSING & RENDERING ---
+    // --- HYBRID TEXT PARSING (SUPPORTING BOTH FORMATS) ---
 
     const parseCustomSyntax = (text) => {
         if (!text) return [];
 
-        // Regex for the new format:
-        // s(...) -> Section
-        // h(...) -> Heading
-        // l(...) -> List Item
-        // link(...)-text(...) -> Hyperlink
-        // br() -> Line Break
-        // We also handle normal text in between.
-        
-        const regex = /s\((.*?)\)|h\((.*?)\)|l\((.*?)\)|link\((.*?)\)-text\((.*?)\)|br\(\)/gs;
+        // Updated Regex for:
+        // 1. s(text) or [section]text[/section]
+        // 2. h(text) or [h]text[/h]
+        // 3. l(text) or [li]text[/li]
+        // 4. link(url)-text(label) or [source="url" text:label]
+        // 5. br() or [br]
+        const regex = /s\((.*?)\)|\[section\](.*?)\[\/section\]|h\((.*?)\)|\[h\](.*?)\[\/h\]|l\((.*?)\)|\[li\](.*?)\[\/li\]|link\((.*?)\)-text\((.*?)\)|\[source="(.*?)" text:(.*?)\]|br\(\)|\[br\]/gs;
         
         const parts = [];
         let lastIndex = 0;
         let match;
 
         while ((match = regex.exec(text)) !== null) {
-            // Push preceding text if any
             if (match.index > lastIndex) {
                 parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
             }
 
-            if (match[1]) {
-                // s(content) - Section
-                parts.push({ type: 'section', content: match[1] });
-            } else if (match[2]) {
-                // h(content) - Heading
-                parts.push({ type: 'heading', content: match[2] });
-            } else if (match[3]) {
-                // l(content) - List Item
-                parts.push({ type: 'listItem', content: match[3] });
-            } else if (match[4] && match[5]) {
-                // link(url)-text(content)
-                parts.push({ type: 'link', url: match[4], content: match[5] });
-            } else if (match[0] === 'br()') {
-                // br()
+            if (match[1] || match[2]) {
+                parts.push({ type: 'section', content: match[1] || match[2] });
+            } else if (match[3] || match[4]) {
+                parts.push({ type: 'heading', content: match[3] || match[4] });
+            } else if (match[5] || match[6]) {
+                parts.push({ type: 'listItem', content: match[5] || match[6] });
+            } else if (match[7] && match[8]) {
+                parts.push({ type: 'link', url: match[7], content: match[8] });
+            } else if (match[9] && match[10]) {
+                parts.push({ type: 'link', url: match[9], content: match[10] });
+            } else if (match[0] === 'br()' || match[0] === '[br]') {
                 parts.push({ type: 'br' });
             }
 
             lastIndex = regex.lastIndex;
         }
 
-        // Push any remaining text at the end
         if (lastIndex < text.length) {
             parts.push({ type: 'text', content: text.slice(lastIndex) });
         }
-
         return parts;
     };
 
@@ -372,9 +358,11 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         const maxLength = similarPosts ? 200 : 150;
 
         if (isFeed) {
-            // Strip formatters for feed preview
+            // Simplified stripping for feed preview
             const plainText = post.message
-                .replace(/s\((.*?)\)|h\((.*?)\)|l\((.*?)\)|link\((.*?)\)-text\((.*?)\)|br\(\)/g, '$1$2$3$5 ')
+                .replace(/s\((.*?)\)|\[section\](.*?)\[\/section\]|h\((.*?)\)|\[h\](.*?)\[\/h\]|l\((.*?)\)|\[li\](.*?)\[\/li\]|link\((.*?)\)-text\((.*?)\)|\[source="(.*?)" text:(.*?)\]|br\(\)|\[br\]/gs, (match, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10) => {
+                    return p1 || p2 || p3 || p4 || p5 || p6 || p8 || p10 || '';
+                })
                 .trim();
                 
             const truncated = plainText.length > maxLength ? plainText.slice(0, maxLength) + "..." : plainText;
@@ -386,55 +374,30 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         return parts.map((part, i) => {
             switch (part.type) {
                 case "text":
-                    return (
-                        <Text key={i} className="text-base leading-7 text-gray-800 dark:text-gray-200">
-                            {part.content}
-                        </Text>
-                    );
-
+                    return <Text key={i} className="text-base leading-7 text-gray-800 dark:text-gray-200">{part.content}</Text>;
                 case "br":
                     return <View key={i} className="h-2" />;
-
                 case "link":
                     return (
-                        <Text
-                            key={i}
-                            onPress={() => Linking.openURL(part.url)}
-                            className="text-blue-500 font-bold underline text-base"
-                        >
+                        <Text key={i} onPress={() => Linking.openURL(part.url)} className="text-blue-500 font-bold underline text-base">
                             {part.content}
                         </Text>
                     );
-
                 case "heading":
-                    return (
-                        <Text key={i} className="text-xl font-bold mt-4 mb-2 text-black dark:text-white uppercase tracking-tight">
-                            {part.content}
-                        </Text>
-                    );
-
+                    return <Text key={i} className="text-xl font-bold mt-4 mb-2 text-black dark:text-white uppercase tracking-tight">{part.content}</Text>;
                 case "listItem":
                     return (
                         <View key={i} className="flex-row items-start ml-4 my-1">
                             <Text className="text-blue-500 mr-2 text-lg">•</Text>
-                            <Text className="flex-1 text-base leading-6 text-gray-800 dark:text-gray-200">
-                                {part.content}
-                            </Text>
+                            <Text className="flex-1 text-base leading-6 text-gray-800 dark:text-gray-200">{part.content}</Text>
                         </View>
                     );
-
                 case "section":
                     return (
-                        <View
-                            key={i}
-                            className="bg-gray-100 dark:bg-gray-800/60 p-4 my-3 rounded-2xl border-l-4 border-blue-500"
-                        >
-                            <Text className="text-base italic leading-6 text-gray-700 dark:text-gray-300">
-                                {part.content}
-                            </Text>
+                        <View key={i} className="bg-gray-100 dark:bg-gray-800/60 p-4 my-3 rounded-2xl border-l-4 border-blue-500">
+                            <Text className="text-base italic leading-6 text-gray-700 dark:text-gray-300">{part.content}</Text>
                         </View>
                     );
-
                 default:
                     return null;
             }
@@ -443,14 +406,12 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
 
     const renderMediaContent = () => {
         if (!post?.mediaUrl) return null;
-        
         const lowerUrl = post.mediaUrl.toLowerCase();
         const isYouTube = lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be");
         const isTikTok = lowerUrl.includes("tiktok.com");
         const isDirectVideo = post.mediaType?.startsWith("video") || lowerUrl.match(/\.(mp4|mov|m4v)$/i);
         const mediaTypeLabel = (isYouTube || isTikTok || isDirectVideo) ? "video" : "image";
 
-        // DATA SAVER CHECK: Show placeholder if media not requested yet
         if (!loadMedia) {
             return (
                 <View className="my-2">
@@ -543,7 +504,6 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         <View className={`mb-8 overflow-hidden rounded-[32px] border ${isDark ? "bg-[#0d1117] border-gray-800" : "bg-white border-gray-100 shadow-sm"}`}>
             <View className="h-[2px] w-full bg-blue-600 opacity-20" />
             <View className="p-4 px-2">
-                {/* 🔹 Layout Fix: Author name wraps, Views count stays fixed */}
                 <View className="flex-row justify-between items-start mb-5">
                     <Pressable onPress={() => router.push(`/author/${post.authorId || post.authorUserId}`)} className="flex-row items-center gap-3 flex-1 pr-2">
                         <View className="relative shrink-0">
@@ -568,7 +528,6 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                             <Text className="text-[11px] mt-1 text-gray-900 dark:text-white font-bold uppercase tracking-tighter">{userRank.rankName || "Verified Author"}</Text>
                         </View>
                     </Pressable>
-                    
                     <View className="shrink-0 flex-row items-center gap-2 bg-gray-50 dark:bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-100 dark:border-gray-700">
                         <View className="w-1.5 h-1.5 bg-green-500 rounded-full" />
                         <Text className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-widest">{formatViews(totalViews)}</Text>
@@ -582,9 +541,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                     <View className="opacity-90">{renderContent}</View>
                     {!isFeed && (
                         <View className="mb-3 mt-3 w-full p-6 border border-dashed border-gray-300 dark:border-gray-800 rounded-[32px] bg-gray-50/50 dark:bg-white/5 items-center justify-center">
-                            <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] italic text-center">
-                                Sponsored Transmission
-                            </Text>
+                            <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] italic text-center">Sponsored Transmission</Text>
                             <AppBanner size="ANCHORED_ADAPTIVE_BANNER" />
                         </View>
                     )}
@@ -619,14 +576,9 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
 
             <Modal visible={lightbox.open} transparent animationType="fade">
                 <GestureHandlerRootView style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
-                    {/* Close Button Overlay */}
-                    <Pressable
-                        onPress={closeLightbox}
-                        className="absolute top-14 right-6 p-3 bg-white/10 rounded-full z-[100]"
-                    >
+                    <Pressable onPress={closeLightbox} className="absolute top-14 right-6 p-3 bg-white/10 rounded-full z-[100]">
                         <Feather name="x" size={24} color="white" />
                     </Pressable>
-
                     <View className="flex-1 justify-center items-center">
                         {lightbox.type === "image" ? (
                             <GestureDetector gesture={composed}>
@@ -650,4 +602,4 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
             </Modal>
         </View>
     );
-										  }
+}
