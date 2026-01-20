@@ -38,8 +38,9 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
     // Optional: setFailed(true) if you want to hide it until the next retry
     // For now, we keep the space reserved to prevent UI jumping
   };
-
+  
   return (
+    
     <View 
       style={{ 
         minHeight: getMinHeight(), 
@@ -53,29 +54,29 @@ const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
       }}
     >
       {/* 🔹 LOADING ANIMATION: Shows while ad is fetching */}
-      {!loaded && !failed && (
-        <View style={{ position: 'absolute' }}>
-          <ActivityIndicator size="small" color="#3b82f6" />
-        </View>
-      )}
+ //     {!loaded && !failed && (
+    //    <View style={{ position: 'absolute' }}>
+     //     <ActivityIndicator size="small" color="#3b82f6" />
+    //    </View>
+  //    )}
 
-      <BannerAd
-        key={retryKey} // 🔹 Forces re-render on retry
-        unitId={BANNER_ID}
-        size={size}
-        requestOptions={{
-          requestNonPersonalizedAdsOnly: true,
-        }}
-        onAdLoaded={() => {
-          setLoaded(true);
-          setFailed(false);
-          if (retryTimer.current) clearTimeout(retryTimer.current);
-          if (__DEV__) console.log(`Banner Loaded: ${size}`);
-        }}
-        onAdFailedToLoad={(error) => {
-          handleAdFailed(error);
-        }}
-      />
+  //    <BannerAd
+  //      key={retryKey} // 🔹 Forces re-render on retry
+ //       unitId={BANNER_ID}
+   //     size={size}
+  //      requestOptions={{
+  //        requestNonPersonalizedAdsOnly: true,
+   ///     }}
+   //     onAdLoaded={() => {
+   //       setLoaded(true);
+    //      setFailed(false);
+     //     if (retryTimer.current) clearTimeout(retryTimer.current);
+    ///      if (__DEV__) console.log(`Banner Loaded: ${size}`);
+  //      }}
+  //      onAdFailedToLoad={(error) => {
+   //       handleAdFailed(error);
+   //     }}
+ //     />
     </View>
   );
 };
