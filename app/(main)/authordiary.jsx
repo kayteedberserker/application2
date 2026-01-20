@@ -743,7 +743,7 @@ export default function AuthorDiaryDashboard() {
                             </View>
                             
                             {/* Show Rejection Reason */}
-                            {( post.status === 'rejected' && post.rejectionReason ) || ( post.status === 'pending' && post.rejectionReason ) && (
+                            { post.rejectionReason && (
                                 <View className="mt-2 bg-red-500/5 p-2 rounded-lg border border-red-500/10">
                                     <Text className="text-[10px] text-red-400 font-medium italic">
                                         REASON: {post.rejectionReason}
