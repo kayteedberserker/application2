@@ -22,7 +22,7 @@ import TopBar from "./../../components/Topbar";
 
 export default function MainLayout() {
 	const { colorScheme, setColorScheme } = useNativeWind();
-	const systemScheme = useSystemScheme(); // ✅ system theme
+	const systemScheme = useSystemScheme();
 
 	const [lastOffset, setLastOffset] = useState(0);
 	const [isNavVisible, setIsNavVisible] = useState(true);
@@ -32,46 +32,36 @@ export default function MainLayout() {
 	const { user, contextLoading } = useUser();
 
 	useEffect(() => {
-		// We only ping if we have a deviceId (meaning the user has registered)
 		if (user?.deviceId) {
 			const updateActivity = async () => {
 				try {
-					// This happens in the background
 					await fetch("https://oreblogda.com/api/mobile/app-open", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify({ deviceId: user.deviceId }),
 					});
-				} catch (err) {
-					// We don't alert the user for analytics failures
-					// console.error("Failed to update lastActive:", err);
-				}
+				} catch (err) {}
 			};
-
 			updateActivity();
 		}
-	}, [user?.deviceId]); // Runs once on mount, and again if user logs in
+	}, [user?.deviceId]);
 
-	// ✅ Only redirect if we ARE NOT loading context AND we have no user
 	if (!contextLoading && !user) {
 		return <Redirect href="/screens/FirstLaunchScreen" />;
 	}
 
-	// While context is fetching from AsyncStorage, show the loader with return
 	if (contextLoading) {
 		return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />;
 	}
 
 	const insets = useSafeAreaInsets();
 
-	// ✅ FIX: Sync system theme → NativeWind
 	useEffect(() => {
 		if (systemScheme) {
 			setColorScheme(systemScheme);
 		}
 	}, [systemScheme]);
 
-	// Scroll listener
 	useEffect(() => {
 		const subscription = DeviceEventEmitter.addListener("onScroll", (offsetY) => {
 			setShowTop(offsetY > 400);
@@ -107,10 +97,8 @@ export default function MainLayout() {
 
 	return (
 		<>
-			{/* STATUS BAR */}
 			<StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
 			
-			{/* HEADER */}
 			<SafeAreaView
 				style={{
 					zIndex: 100,
@@ -127,12 +115,11 @@ export default function MainLayout() {
 				</Animated.View>
 			</SafeAreaView>
 			<UpdateHandler />
-			{/* TABS */}
+
             <Tabs
-                // ✅ CHANGED backBehavior to "initialRoute"
-                // This prevents the app from exiting when you click back from a deep stack.
-                // It will go Post B -> Post A -> Home.
-                backBehavior="initialRoute" 
+                // ✅ THE COMBO FIX
+                initialRouteName="index" // 1. Set the anchor point
+                backBehavior="history"   // 2. Allow B -> A -> Home history
                 screenOptions={{
                     headerShown: false,
                     tabBarActiveTintColor: "#60a5fa",
@@ -149,7 +136,7 @@ export default function MainLayout() {
                         position: "absolute",
                         bottom: insets.bottom + 15,
                         height: 60, 
-                        transform: [{ translateX: '15%' }], // 🛡️ PRESERVED AS REQUESTED
+                        transform: [{ translateX: '15%' }],
                         width: "70%",
                         alignSelf: "center",
                         borderRadius: 25,
@@ -206,8 +193,7 @@ export default function MainLayout() {
                     }}
                 />
 
-                {/* ✅ HIDDEN ROUTES WITH 'getId' */}
-                {/* Keeping getId ensures Post A and Post B are separate screens. */}
+                {/* ✅ STABLE STACKING ROUTES */}
                 <Tabs.Screen 
                     name="post/[id]" 
                     getId={({ params }) => params?.id} 
@@ -225,7 +211,6 @@ export default function MainLayout() {
                 />
             </Tabs>
 
-			{/* FLOATING ACTION INTERFACE */}
 			<View
 				style={{
 					position: "absolute",
@@ -260,19 +245,9 @@ export default function MainLayout() {
 				)}
 
 				<TouchableOpacity
-					onPress={() =>
-						Linking.openURL(
-							"https://whatsapp.com/channel/0029VbBkiupCRs1wXFWtDG3N"
-						)
-					}
+					onPress={() => Linking.openURL("https://whatsapp.com/channel/0029VbBkiupCRs1wXFWtDG3N")}
 					activeOpacity={0.8}
-					style={{
-						elevation: 8,
-						shadowColor: "#22c55e",
-						shadowOffset: { width: 0, height: 4 },
-						shadowOpacity: 0.3,
-						shadowRadius: 8,
-					}}
+					style={{ elevation: 8 }}
 				>
 					<Image
 						source={require("../../assets/images/whatsapp.png")}
