@@ -129,7 +129,10 @@ export default function MainLayout() {
 			<UpdateHandler />
 			{/* TABS */}
             <Tabs
-                backBehavior="history" // ✅ KEY FIX: Ensures back button goes to previous screen, not always Home
+                // ✅ CHANGED backBehavior to "initialRoute"
+                // This prevents the app from exiting when you click back from a deep stack.
+                // It will go Post B -> Post A -> Home.
+                backBehavior="initialRoute" 
                 screenOptions={{
                     headerShown: false,
                     tabBarActiveTintColor: "#60a5fa",
@@ -203,20 +206,21 @@ export default function MainLayout() {
                     }}
                 />
 
-                {/* ✅ HIDDEN ROUTES WITH 'getId' TO FIX STACKING ISSUE */}
+                {/* ✅ HIDDEN ROUTES WITH 'getId' */}
+                {/* Keeping getId ensures Post A and Post B are separate screens. */}
                 <Tabs.Screen 
                     name="post/[id]" 
-                    getId={({ params }) => params?.id} // Creates a unique screen for every Post ID
+                    getId={({ params }) => params?.id} 
                     options={{ href: null }} 
                 />
                 <Tabs.Screen 
                     name="author/[id]" 
-                    getId={({ params }) => params?.id} // Creates a unique screen for every Author
+                    getId={({ params }) => params?.id} 
                     options={{ href: null }} 
                 />
                 <Tabs.Screen 
                     name="categories/[id]" 
-                    getId={({ params }) => params?.id} // Creates a unique screen for every Category
+                    getId={({ params }) => params?.id} 
                     options={{ href: null }} 
                 />
             </Tabs>
@@ -284,4 +288,4 @@ export default function MainLayout() {
 			</View>
 		</>
 	);
-			}
+}
