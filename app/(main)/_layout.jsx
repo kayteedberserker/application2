@@ -203,10 +203,22 @@ export default function MainLayout() {
                     }}
                 />
 
-                {/* Hidden Routes - Logic Changed: Removed 'display: none' so Tab Bar stays visible */}
-                <Tabs.Screen name="post/[id]" options={{ href: null }} />
-                <Tabs.Screen name="author/[id]" options={{ href: null }} />
-                <Tabs.Screen name="categories/[id]" options={{ href: null }} />
+                {/* ✅ HIDDEN ROUTES WITH 'getId' TO FIX STACKING ISSUE */}
+                <Tabs.Screen 
+                    name="post/[id]" 
+                    getId={({ params }) => params?.id} // Creates a unique screen for every Post ID
+                    options={{ href: null }} 
+                />
+                <Tabs.Screen 
+                    name="author/[id]" 
+                    getId={({ params }) => params?.id} // Creates a unique screen for every Author
+                    options={{ href: null }} 
+                />
+                <Tabs.Screen 
+                    name="categories/[id]" 
+                    getId={({ params }) => params?.id} // Creates a unique screen for every Category
+                    options={{ href: null }} 
+                />
             </Tabs>
 
 			{/* FLOATING ACTION INTERFACE */}
@@ -272,4 +284,4 @@ export default function MainLayout() {
 			</View>
 		</>
 	);
-						}
+			}
