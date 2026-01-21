@@ -195,7 +195,7 @@ export default function MainLayout() {
 				style={{
 					position: "absolute",
 					bottom: insets.bottom + 20,
-					right: 20,
+					right: 5,
 					gap: 12,
 					alignItems: "center",
 					zIndex: 1000,
@@ -229,8 +229,8 @@ export default function MainLayout() {
 					<Image
 						source={require("../../assets/images/whatsapp.png")}
 						style={{
-							width: 52,
-							height: 52,
+							width: 50,
+							height: 50,
 							borderRadius: 18,
 							borderWidth: 2,
 							borderColor: "#111111"
