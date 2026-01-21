@@ -560,10 +560,10 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         ) : (
             /* POLL SUMMARY VIEW (Shown when similar posts are present) */
             <View className="mt-2 pt-3 border-t border-gray-200 dark:border-gray-800">
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row px-3 items-center gap-2">
                     {/* Updated to a poll-specific icon */}
                     <MaterialCommunityIcons 
-                        name="chart-poll" 
+                        name="poll" 
                         size={20} 
                         color={isDark ? "#60a5fa" : "#3b82f6"} 
                     />
