@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics"; // Added Haptics
 import { useEffect, useState, useRef } from "react";
 import {
 	ActivityIndicator,
@@ -21,8 +22,8 @@ import Animated, {
 	useSharedValue,
 	withRepeat,
 	withTiming,
-	FadeInUp,
-	FadeOutDown,
+	FadeIn,
+	FadeOut,
 } from "react-native-reanimated";
 import useSWR from "swr";
 import { useUser } from "../context/UserContext";
@@ -46,7 +47,7 @@ const CommentSkeleton = () => {
 	return (
 		<View className="mb-6 pl-4 border-l-2 border-gray-100 dark:border-gray-800">
 			<RNAnimated.View style={{ opacity }} className="h-5 w-32 bg-gray-200 dark:bg-gray-800 rounded-md mb-2" />
-			<RNAnimated.View style={{ opacity }} className="h-4 w-full bg-gray-100 dark:bg-gray-800 rounded-md mb-1" />
+			<RNAnimated.View style={{ opacity }} className="h-4 w-full bg-gray-100 dark:border-gray-800 rounded-md mb-1" />
 		</View>
 	);
 };
@@ -63,7 +64,10 @@ const SingleComment = ({ comment, onOpenDiscussion }) => {
 			<View className="flex-row items-center mt-3 gap-4">
 				<Text className="text-gray-400 text-[8px] font-bold">{new Date(comment.date).toLocaleDateString()}</Text>
 				<Pressable 
-					onPress={() => onOpenDiscussion(comment)} 
+					onPress={() => {
+						Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+						onOpenDiscussion(comment);
+					}} 
 					className="flex-row items-center bg-blue-600/10 px-3 py-1.5 rounded-full border border-blue-600/20"
 				>
 					<Ionicons name="chatbubbles-outline" size={12} color="#2563eb" />
@@ -102,13 +106,11 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 		}
 	}, [visible]);
 
-	// Detection for background updates
 	useEffect(() => {
-		if (visible && comment.replies?.length > 0 && !shouldAutoScroll) {
-			// If we aren't at the bottom and a new message arrives
+		if (visible && comment?.replies?.length > 0 && !shouldAutoScroll) {
 			setShowNewMessageToast(true);
 		}
-	}, [comment.replies?.length]);
+	}, [comment?.replies?.length, visible]);
 
 	const panResponder = useRef(
 		PanResponder.create({
@@ -134,6 +136,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 	};
 
 	const jumpToBottom = () => {
+		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 		scrollViewRef.current?.scrollToEnd({ animated: true });
 		setShowNewMessageToast(false);
 	};
@@ -147,7 +150,6 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 					style={{ transform: [{ translateY: panY }], height: '92%' }} 
 					className="bg-white dark:bg-[#0a0a0a] rounded-t-[40px] border-t-2 border-blue-600/40 overflow-hidden"
 				>
-					{/* Drag Handle Area */}
 					<View {...panResponder.panHandlers} className="items-center py-5 bg-white dark:bg-[#0a0a0a]">
 						<View className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full" />
 					</View>
@@ -157,17 +159,9 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 						className="flex-1"
 						keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
 					>
-						{/* Floating New Message Notification */}
 						{showNewMessageToast && (
-							<Animated.View 
-								entering={FadeInUp} 
-								exiting={FadeOutDown}
-								className="absolute top-24 self-center z-50"
-							>
-								<Pressable 
-									onPress={jumpToBottom}
-									className="flex-row items-center bg-blue-600 px-4 py-2 rounded-full shadow-xl border border-white/20"
-								>
+							<Animated.View entering={FadeIn} exiting={FadeOut} className="absolute top-24 self-center z-50">
+								<Pressable onPress={jumpToBottom} className="flex-row items-center bg-blue-600 px-4 py-2 rounded-full shadow-xl border border-white/20">
 									<Ionicons name="arrow-down" size={14} color="white" />
 									<Text className="text-white text-[10px] font-black uppercase ml-2">New Signals Detected</Text>
 								</Pressable>
@@ -177,9 +171,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 						<ScrollView 
 							ref={scrollViewRef} 
 							className="flex-1" 
-							onScroll={(e) => {
-								scrollOffset.current = e.nativeEvent.contentOffset.y;
-							}}
+							onScroll={(e) => { scrollOffset.current = e.nativeEvent.contentOffset.y; }}
 							scrollEventThrottle={16}
 							showsVerticalScrollIndicator={false}
 							stickyHeaderIndices={[0]}
@@ -190,33 +182,27 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 								}
 							}}
 						>
-							{/* STICKY HEADER: Anchor Message */}
 							<View className="bg-white dark:bg-[#0a0a0a] px-6 pb-4 border-b border-gray-100 dark:border-gray-800 shadow-sm">
-								<Pressable onLongPress={() => setReplyingTo({ name: comment.name, text: comment.text, id: 'anchor' })}>
+								<Pressable onLongPress={() => {
+									Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+									setReplyingTo({ name: comment.name, text: comment.text, id: 'anchor' });
+								}}>
 									<Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Anchor Signal</Text>
 									<Text className="text-sm font-black dark:text-white">{comment.name}</Text>
 									<Text className="text-xs text-gray-600 dark:text-gray-400 font-bold mt-1 leading-5">{comment.text}</Text>
 								</Pressable>
 							</View>
 
-							{/* Replies List */}
 							<View className="px-6 pt-6">
 								<Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-6">Response Feed</Text>
 								{comment.replies && comment.replies.map((reply, idx) => (
-									<View 
-										key={reply._id || idx} 
-										onLayout={(event) => { messageRefs.current[reply._id] = event.nativeEvent.layout; }}
-										className="mb-8"
-									>
-										<Pressable 
-											onLongPress={() => setReplyingTo({ name: reply.name, text: reply.text, id: reply._id })}
-											className="border-l-2 border-gray-100 dark:border-gray-800 pl-4"
-										>
+									<View key={reply._id || idx} onLayout={(event) => { messageRefs.current[reply._id] = event.nativeEvent.layout; }} className="mb-8">
+										<Pressable onLongPress={() => {
+											Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+											setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
+										}} className="border-l-2 border-gray-100 dark:border-gray-800 pl-4">
 											{reply.replyTo && (
-												<Pressable 
-													onPress={() => scrollToMessage(reply.replyTo.id)}
-													className="bg-gray-100 dark:bg-white/5 p-2 rounded-lg border-l-4 border-blue-500 mb-2 opacity-80"
-												>
+												<Pressable onPress={() => scrollToMessage(reply.replyTo.id)} className="bg-gray-100 dark:bg-white/5 p-2 rounded-lg border-l-4 border-blue-500 mb-2 opacity-80">
 													<Text className="text-[8px] font-black text-blue-500 uppercase">{reply.replyTo.name}</Text>
 													<Text className="text-[10px] text-gray-500 dark:text-gray-400 font-bold" numberOfLines={1}>{reply.replyTo.text}</Text>
 												</Pressable>
@@ -225,7 +211,10 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 											<Text className="text-xs text-gray-600 dark:text-gray-300 font-bold mt-1 leading-5">{reply.text}</Text>
 											<View className="flex-row items-center justify-between mt-3">
 												<Text className="text-[8px] font-bold text-gray-400 uppercase">{new Date(reply.date).toLocaleTimeString()}</Text>
-												<Pressable onPress={() => setReplyingTo({ name: reply.name, text: reply.text, id: reply._id })}>
+												<Pressable onPress={() => {
+													Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+													setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
+												}}>
 													<Text className="text-blue-500 text-[9px] font-black uppercase tracking-widest">Reply</Text>
 												</Pressable>
 											</View>
@@ -236,7 +225,6 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 							</View>
 						</ScrollView>
 
-						{/* INPUT SECTION */}
 						<View className="p-5 pb-10 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-gray-800">
 							{replyingTo && (
 								<View className="flex-row items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-t-2xl border-l-4 border-blue-600 mb-[-5px] pb-4">
@@ -261,6 +249,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 								<Pressable
 									onPress={() => {
 										if (replyText.trim() && !isPosting) {
+											Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 											onReply(comment._id, replyText, replyingTo);
 											setReplyText("");
 											setReplyingTo(null);
@@ -336,6 +325,7 @@ export default function CommentSection({ postId }) {
 			const responseData = await res.json();
 
 			if (res.ok) {
+				Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 				if (parentId) {
 					mutate({
 						comments: comments.map(c => {
@@ -361,6 +351,7 @@ export default function CommentSection({ postId }) {
 				}
 			}
 		} catch (err) {
+			Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 			Alert.alert("Link Failure", "Connection lost.");
 		} finally {
 			setIsPosting(false);
@@ -388,7 +379,10 @@ export default function CommentSection({ postId }) {
 					onChangeText={setText}
 				/>
 				<Pressable
-					onPress={() => handlePostComment()}
+					onPress={() => {
+						Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+						handlePostComment();
+					}}
 					disabled={isPosting}
 					className="relative bg-blue-600 h-14 rounded-xl overflow-hidden justify-center items-center shadow-lg"
 				>
@@ -407,10 +401,19 @@ export default function CommentSection({ postId }) {
 				<ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
 					{isLoading ? (
 						<View><CommentSkeleton /><CommentSkeleton /></View>
-					) : (
+					) : comments.length > 0 ? (
 						comments.map((c, i) => (
 							<SingleComment key={c._id || i} comment={c} onOpenDiscussion={(comm) => setActiveDiscussion(comm)} />
 						))
+					) : (
+						<View className="items-center justify-center py-10 opacity-40">
+							<View className="w-8 h-8 border border-dashed border-gray-500 rounded-full items-center justify-center mb-3">
+								<ActivityIndicator size="small" color="#6b7280" />
+							</View>
+							<Text className="text-[15px] font-bold text-gray-500 uppercase tracking-widest text-center">
+								Awaiting First Signal...
+							</Text>
+						</View>
 					)}
 				</ScrollView>
 			</View>
@@ -424,4 +427,4 @@ export default function CommentSection({ postId }) {
 			/>
 		</View>
 	);
-		}
+}
