@@ -5,9 +5,10 @@ import useSWR from "swr";
 import AppBanner from "./AppBanner";
 import PostCard from "./PostCard";
 import { Text } from "./Text";
+import apiFetch from "../utils/apiFetch"
 
 const API_URL = "https://oreblogda.com";
-const fetcher = (url) => fetch(url).then((res) => res.json());
+const fetcher = (url) => apiFetch(url).then((res) => res.json());
 
 export default function SimilarPosts({ category, currentPostId }) {
   const [shuffledPosts, setShuffledPosts] = useState([]);
