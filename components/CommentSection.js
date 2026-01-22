@@ -27,7 +27,7 @@ import Animated, {
 	FadeIn,
 	FadeOut,
 } from "react-native-reanimated";
-import useSWR from "use-swr";
+import useSWR from "swr";
 import { useUser } from "../context/UserContext";
 import { Text } from "./Text";
 
