@@ -1,7 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { DeviceEventEmitter, FlatList, Image, View } from "react-native";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { DeviceEventEmitter, FlatList, Image, View, Animated, Easing } from "react-native";
 import AnimeLoading from "../../../components/AnimeLoading";
 import AppBanner from "../../../components/AppBanner";
 import PostCard from "../../../components/PostCard";
@@ -10,17 +10,40 @@ import { Text } from "../../../components/Text";
 
 const API_BASE = "https://oreblogda.com/api"
 
+// 🔹 AURA TIER LOGIC (Synced with Profile)
+const getAuraTier = (rank) => {
+    if (!rank || rank > 10) return { color: '#3b82f6', label: 'ACTIVE' };
+    switch (rank) {
+        case 1: return { color: '#fbbf24', label: 'PROTAGONIST', icon: 'crown' };
+        case 2: return { color: '#60a5fa', label: 'RIVAL', icon: 'lightning-bolt' };
+        case 3: return { color: '#cd7f32', label: 'SENSEI', icon: 'auto-fix' };
+        case 4: return { color: '#a78bfa', label: 'ELITE', icon: 'shield-star' };
+        default: return { color: '#34d399', label: 'VANGUARD', icon: 'shield-check' };
+    }
+};
+
 export default function AuthorPage() {
   const { id } = useLocalSearchParams()
   const [author, setAuthor] = useState(null)
   const [posts, setPosts] = useState([]);
-  const [totalPosts, setTotalPosts] = useState(0); // Track lifetime total from API
+  const [totalPosts, setTotalPosts] = useState(0); 
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const scrollRef = useRef(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // 🔹 Pulse Animation for Top Ranks
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener("doScrollToTop", () => {
@@ -36,14 +59,12 @@ export default function AuthorPage() {
         fetch(`${API_BASE}/users/${id}`),
         fetch(`${API_BASE}/posts?author=${id}&page=1&limit=6`),
       ]);
-
       const userData = await userRes.json();
       const postData = await postRes.json();
-
       if (userRes.ok) setAuthor(userData.user);
       if (postRes.ok) {
         setPosts(postData.posts);
-        setTotalPosts(postData.total || postData.posts.length); // Initialize lifetime count
+        setTotalPosts(postData.total || postData.posts.length);
         setHasMore(postData.posts.length === 6);
       }
     } catch (error) {
@@ -62,7 +83,7 @@ export default function AuthorPage() {
       const data = await res.json();
       if (res.ok && data.posts.length > 0) {
         setPosts((prev) => [...prev, ...data.posts]);
-        setTotalPosts(data.total); // Keep total synced
+        setTotalPosts(data.total);
         setPage(nextPage);
         setHasMore(data.posts.length === 6);
       } else {
@@ -80,113 +101,169 @@ export default function AuthorPage() {
   }, [id]);
 
   const ListHeader = () => {
-    // Rank logic variables based on lifetime totalPosts
     const count = totalPosts;
     const rankTitle = count > 200 ? "Master_Writer" : count > 150 ? "Elite_Writer" : count > 100 ? "Senior_Writer" : count > 50 ? "Novice_Writer" : count > 25 ? "Senior_Researcher" : "Novice_Researcher";
     const rankIcon = count > 200 ? "👑" : count > 150 ? "💎" : count > 100 ? "🔥" : count > 50 ? "⚔️" : count > 25 ? "📜" : "🛡️";
     const nextMilestone = count > 200 ? 500 : count > 150 ? 200 : count > 100 ? 150 : count > 50 ? 100 : count > 25 ? 50 : 25;
     const progress = Math.min((count / nextMilestone) * 100, 100);
 
+    // 🔹 Aura Rank Data
+    const auraRank = author?.previousRank || 0;
+    const aura = getAuraTier(auraRank);
+
+    // 🔹 Badge Shape Logic
+    const getBadgeStyle = () => {
+        if (auraRank === 1) return { borderRadius: 45, transform: [{ rotate: '45deg' }] }; // Diamond
+        if (auraRank === 2) return { borderRadius: 60 }; // Octagon-ish
+        if (auraRank === 3) return { borderRadius: 35 }; // Squircle
+        return { borderRadius: 100 }; // Normal
+    };
+
     return (
       <View className="px-4 pt-20 pb-6">
         {author && (
           <View 
-            className="relative p-6 bg-white/40 dark:bg-black/40 border border-gray-200 dark:border-blue-900/30 overflow-hidden shadow-2xl"
-            style={{ borderRadius: 32 }}
+            className="relative p-6 bg-white dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 overflow-hidden shadow-2xl"
+            style={{ borderRadius: 40 }}
           >
-            <Text className="absolute top-2 right-4 opacity-10 font-black uppercase italic text-4xl dark:text-white select-none">
-              Operator
-            </Text>
+            {/* Background Decor */}
+            <View className="absolute -top-10 -right-10 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl" />
             
             <View className="flex-col items-center gap-6">
-              <View className="relative">
-                <View className="absolute inset-0 bg-blue-600 rounded-full blur-md opacity-20" />
-                <Image
-                  source={{ uri: author.profilePic?.url || "https://via.placeholder.com/150" }}
-                  className="w-32 h-32 rounded-full border-4 border-white dark:border-gray-900 shadow-xl"
-                />
-                <View className="absolute bottom-2 right-2 w-5 h-5 bg-green-500 border-4 border-white dark:border-black rounded-full" />
+              <View className="relative items-center justify-center">
+                
+                {/* 🔹 RANK 1-3 SPECIAL SHAPE BADGE FRAME */}
+                {auraRank > 0 && auraRank <= 3 && (
+                    <Animated.View 
+                        style={[
+                            getBadgeStyle(),
+                            { 
+                                position: 'absolute', 
+                                width: 155, 
+                                height: 155, 
+                                borderWidth: 3, 
+                                borderColor: aura.color,
+                                borderStyle: auraRank === 1 ? 'solid' : 'dashed',
+                                opacity: 0.6,
+                                transform: [...getBadgeStyle().transform || [], { scale: pulseAnim }]
+                            }
+                        ]}
+                    />
+                )}
+
+                {/* Profile Image with Dynamic Border */}
+                <View 
+                    style={[getBadgeStyle(), { overflow: 'hidden', borderWidth: 4, borderColor: auraRank > 0 ? aura.color : '#eee' }]}
+                    className="w-32 h-32 bg-gray-900"
+                >
+                    <Image
+                        source={{ uri: author.profilePic?.url || "https://via.placeholder.com/150" }}
+                        style={{ width: '110%', height: '110%', transform: auraRank === 1 ? [{ rotate: '-45deg' }] : [] }}
+                    />
+                </View>
+
+                {/* Rank Tag Overlay */}
+                {auraRank > 0 && (
+                    <View 
+                        style={{ backgroundColor: aura.color }}
+                        className="absolute -bottom-3 px-4 py-1 rounded-full border-2 border-white dark:border-black shadow-lg"
+                    >
+                        <View className="flex-row items-center gap-1">
+                            <MaterialCommunityIcons name={aura.icon} size={10} color="white" />
+                            <Text className="text-[9px] font-black uppercase text-white tracking-widest">{aura.label} #{auraRank}</Text>
+                        </View>
+                    </View>
+                )}
               </View>
 
-              <View className="items-center w-full">
-                <View className="px-3 py-1 rounded-full bg-blue-600/10 border border-blue-600/20 mb-3">
-                  <Text className="text-[10px] font-black uppercase tracking-widest text-blue-600">Verified_Intel_Source</Text>
+              <View className="items-center w-full mt-2">
+                <View className="flex-row items-center gap-2 mb-2">
+                    <Text className="text-4xl font-black italic tracking-tighter uppercase text-gray-900 dark:text-white text-center">
+                        {author.username}
+                    </Text>
+                    <View className="flex-row items-center bg-orange-500/10 px-2 py-1 rounded-lg">
+                        <Ionicons name="flame" size={16} color="#f97316"/>
+                        <Text className="text-orange-500 font-black ml-1 text-xs">{author.lastStreak || "0"}</Text>
+                    </View>
                 </View>
                 
-                <Text className="text-4xl font-black italic tracking-tighter uppercase text-gray-900 dark:text-white text-center">
-                  {author.username} - {author.lastStreak > 0 ? <Ionicons name="flame" size={30} color="#f97316"/> : <Ionicons name="flame" size={30} color="#ef4444"/>}{author.lastStreak > 0 ? `${author.lastStreak}` : "0"}
+                <Text className="text-sm text-gray-500 dark:text-gray-400 text-center leading-relaxed font-medium px-8 italic">
+                  "{author.description || "This operator is a ghost in the machine..."}"
                 </Text>
-                
-                <Text className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center leading-relaxed font-medium px-4">
-                  {author.description || "This operator hasn’t synchronized a bio with the central network yet."}
-                </Text>
+
+                {/* Stats Bar */}
+                <View className="flex-row gap-8 mt-6 border-y border-gray-100 dark:border-gray-800 w-full py-4 justify-center">
+                    <View className="items-center">
+                        <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Aura</Text>
+                        <Text className="text-lg font-black dark:text-white" style={{ color: aura.color }}>+{author.weeklyAura || 0}</Text>
+                    </View>
+                    <View className="items-center">
+                        <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Logs</Text>
+                        <Text className="text-lg font-black dark:text-white">{totalPosts}</Text>
+                    </View>
+                    <View className="items-center">
+                        <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rank</Text>
+                        <Text className="text-lg font-black dark:text-white">#{auraRank || '??'}</Text>
+                    </View>
+                </View>
 
                 <View className="mt-8 w-full px-2">
                   <View className="flex-row justify-between items-end mb-2">
                     <View className="flex-row items-center gap-2">
                       <Text className="text-2xl">{rankIcon}</Text>
                       <View>
-                        <Text className="text-[8px] font-mono uppercase tracking-[0.2em] text-blue-500/60 leading-none mb-1">Current_Class</Text>
+                        <Text className="text-[8px] font-mono uppercase tracking-[0.2em] text-blue-500/60 leading-none mb-1">Writer_Class</Text>
                         <Text className="text-sm font-black uppercase tracking-tighter dark:text-white">
                           {rankTitle}
                         </Text>
                       </View>
                     </View>
                     <Text className="text-[10px] font-mono font-bold text-gray-500 uppercase">
-                      EXP: {count} / {count > 150 ? "MAX" : nextMilestone}
+                      EXP: {count} / {nextMilestone}
                     </Text>
                   </View>
 
-                  <View className="h-2 w-full bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-300 dark:border-white/10">
+                  <View className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                     <View 
                       style={{ width: `${progress}%` }}
                       className="h-full bg-blue-600 shadow-lg shadow-blue-500"
                     />
                   </View>
-                  
-                  <Text className="text-[8px] font-mono uppercase tracking-widest text-center mt-2 opacity-50 dark:text-gray-400">
-                    System_Status: {count > 100 ? "Limit_Breaker_Active" : "Synchronizing_Archives"}
-                  </Text>
                 </View>
               </View>
             </View>
-            
-            <View className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-600/30" />
           </View>
         )}
 
-        <View className="flex-row items-center gap-4 mt-10 mb-4">
+        <View className="flex-row items-center gap-4 mt-10 mb-4 px-2">
           <Text className="text-xl font-black italic uppercase tracking-tighter text-gray-900 dark:text-white">
-            Intel <Text className="text-blue-600">Archives</Text>
+            Mission <Text className="text-blue-600">History</Text>
           </Text>
-          <View className="h-[1px] flex-1 bg-blue-600/20" />
+          <View className="h-[1px] flex-1 bg-gray-100 dark:bg-gray-800" />
         </View>
       </View>
     );
   };
 
   const renderItem = ({ item, index }) => {
-          const showAd = (index + 1) % 2 === 0;
-  
-          return (
-              <View>
-                  <PostCard post={item} isFeed/>
-                  {showAd && (
-                      <View className="mb-8 mt-3 w-full p-6 border border-dashed border-gray-300 dark:border-gray-800 rounded-[32px] bg-gray-50/50 dark:bg-white/5 items-center justify-center">
-                          <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] italic text-center">
-                              Sponsored Transmission
-                          </Text>
-                          <AppBanner size="MEDIUM_RECTANGLE" />
-                      </View>
-                  )}
-              </View>
-          );
-      };
+    const showAd = (index + 1) % 4 === 0;
+    return (
+        <View>
+            <PostCard post={item} isFeed/>
+            {showAd && (
+                <View className="mb-8 mt-3 mx-4 p-6 border border-dashed border-gray-300 dark:border-gray-800 rounded-[32px] bg-gray-50/50 dark:bg-white/5 items-center justify-center">
+                    <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] italic text-center mb-4">
+                        Sponsored Transmission
+                    </Text>
+                    <AppBanner size="MEDIUM_RECTANGLE" />
+                </View>
+            )}
+        </View>
+    );
+  };
 
   if (loading && posts.length === 0) {
-    return (
-      <AnimeLoading message="Loading Author" subMessage="Fetching Author Info" />
-    );
+    return <AnimeLoading message="Loading Author" subMessage="Decoding biological data..." />;
   }
 
   return (
@@ -209,17 +286,12 @@ export default function AuthorPage() {
       }
       onEndReached={fetchMorePosts}
       onEndReachedThreshold={0.5}
-      onRefresh={() => {
-        setPage(1);
-        fetchInitialData();
-      }}
+      onRefresh={() => { setPage(1); fetchInitialData(); }}
       refreshing={refreshing}
-      onScroll={(e) => {
-        DeviceEventEmitter.emit("onScroll", e.nativeEvent.contentOffset.y);
-      }}
+      onScroll={(e) => { DeviceEventEmitter.emit("onScroll", e.nativeEvent.contentOffset.y); }}
       scrollEventThrottle={16}
       contentContainerStyle={{ paddingBottom: 120 }}
-      className="bg-white dark:bg-gray-950"
+      className="bg-white dark:bg-[#0a0a0a]"
     />
   );
 }
