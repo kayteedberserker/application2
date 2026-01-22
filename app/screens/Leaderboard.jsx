@@ -20,11 +20,12 @@ import useSWR from 'swr';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SyncLoading } from '../../components/SyncLoading';
 import { Text } from "../../components/Text";
+import apiFetch from "../../utils/apiFetch"
 
 const { width } = Dimensions.get('window');
 const API_URL = "https://oreblogda.com";
 
-const fetcher = (url) => fetch(url).then((res) => res.json());
+const fetcher = (url) => apiFetch(url).then((res) => res.json());
 
 // ----------------------
 // ✨ AURA UTILITY HELPER
