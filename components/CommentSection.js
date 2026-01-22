@@ -247,7 +247,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 										onPress={() => {
 											if (replyText.trim() && !isPosting) {
 												Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-												// We always send the anchor ID as the parentId so it stays in one discussion list
+												// KEY CHANGE: We always send the Anchor ID as the parent to keep the array flat in DB
 												onReply(comment._id, replyText, replyingTo);
 												setReplyText("");
 												setReplyingTo(null);
@@ -312,8 +312,8 @@ export default function CommentSection({ postId }) {
 				body: JSON.stringify({
 					name: user?.username || "Anonymous",
 					text: content,
-					parentCommentId: parentId,
-					replyTo: replyToMeta, 
+					parentCommentId: parentId, // This is always the ANCHOR ID for replies
+					replyTo: replyToMeta, // This contains the specific message ID being replied to
 					fingerprint: user.deviceId,
 					userId: user._id || null
 				}),
