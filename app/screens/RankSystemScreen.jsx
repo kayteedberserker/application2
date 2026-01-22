@@ -1,9 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Dimensions, SafeAreaView, ScrollView, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../components/Text';
 import THEME from '../../components/useAppTheme';
 const { width } = Dimensions.get('window');
+
+const AURA_PURPLE = "#a78bfa";
 
 export default function RankSystemScreen() {
   const router = useRouter();
@@ -13,7 +15,6 @@ export default function RankSystemScreen() {
       style={{ borderBottomColor: THEME.border }}
       className={`flex-row items-center py-5 ${!isLast ? 'border-b' : ''}`}
     >
-      {/* Icon Box: Changed from bg-gray-900 to THEME.card to match theme */}
       <View 
         style={{ backgroundColor: THEME.bg, borderColor: THEME.border }} 
         className="w-12 h-12 rounded-2xl items-center justify-center border"
@@ -54,8 +55,40 @@ export default function RankSystemScreen() {
           </TouchableOpacity>
           <View className="ml-5">
             <Text style={{ color: THEME.accent }} className="text-[10px] font-black uppercase tracking-[0.3em] mb-1">Status Hierarchy</Text>
-            <Text style={{ color: THEME.text }} className="text-3xl font-black italic uppercase">Rank & Streaks</Text>
+            <Text style={{ color: THEME.text }} className="text-3xl font-black italic uppercase">Rank & Aura</Text>
           </View>
+        </View>
+
+        {/* --- Aura Section --- */}
+        <View className="mb-10">
+            <View className="flex-row items-center mb-6">
+                <MaterialCommunityIcons name="auto-fix" size={20} color={AURA_PURPLE} />
+                <Text style={{ color: THEME.text }} className="ml-3 font-black italic uppercase tracking-widest">Aura Power</Text>
+            </View>
+
+            <View style={{ backgroundColor: THEME.card, borderColor: AURA_PURPLE + '40' }} className="p-8 rounded-[40px] border-2">
+                <View className="items-center mb-6">
+                    <View 
+                      style={{ backgroundColor: AURA_PURPLE + '15', borderColor: AURA_PURPLE + '30' }} 
+                      className="w-16 h-16 rounded-full items-center justify-center border mb-4"
+                    >
+                        <MaterialCommunityIcons name="shield-star" size={32} color={AURA_PURPLE} />
+                    </View>
+                    <Text style={{ color: THEME.text }} className="font-black italic uppercase text-center text-lg">Global Standing</Text>
+                </View>
+
+                <View className="space-y-4">
+                    <Text style={{ color: THEME.textSecondary || '#64748b' }} className="text-sm leading-6">
+                        • <Text style={{ color: AURA_PURPLE }} className="font-bold">Aura</Text> represents your total influence and engagement within the community.
+                    </Text>
+                    <Text style={{ color: THEME.textSecondary || '#64748b' }} className="text-sm leading-6">
+                        • Points are earned automatically through <Text className="font-bold dark:text-white">Transmissions</Text>, receiving <Text className="font-bold dark:text-white">Likes</Text>, and active <Text className="font-bold dark:text-white">Discussion</Text>.
+                    </Text>
+                    <Text style={{ color: THEME.textSecondary || '#64748b' }} className="text-sm leading-6">
+                        • High Aura counts determine your position on the <Text className="font-bold dark:text-white">Global Leaderboard</Text>. Top-tier players receive exclusive profile aesthetics.
+                    </Text>
+                </View>
+            </View>
         </View>
 
         {/* --- Ranking Section --- */}
@@ -127,7 +160,7 @@ export default function RankSystemScreen() {
         {/* --- Credibility Footer --- */}
         <View className="items-center mt-4">
             <Text style={{ color: THEME.textSecondary || '#334155' }} className="text-center text-[10px] font-black uppercase tracking-[0.2em] leading-4">
-                High Ranks + Active Streaks ={"\n"}
+                High Ranks + Active Aura ={"\n"}
                 <Text style={{ color: THEME.accent }}>MAXIMUM APPROVAL CREDIBILITY</Text>
             </Text>
         </View>
