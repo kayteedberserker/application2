@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import {
@@ -48,6 +48,13 @@ export default function AppOnboarding() {
         icon: "trending-up",
         color: "#10b981",
         intel: "RANK: ADVENTURER_LOG"
+    },
+    {
+        title: "AURA_AWAKENING",
+        desc: "Manifest your spiritual pressure! Earn Aura Points through transmissions and high engagement. Every week, the Council resets the leaderboard—top legends keep their glowing badges of prestige. Let's get the AURA farming started. ",
+        icon: "auto-fix",
+        color: "#a78bfa",
+        intel: "AURA: SOUL_VIBRATION"
     },
     {
         title: "GUILD_LEADERBOARD",
@@ -179,7 +186,11 @@ export default function AppOnboarding() {
                                 justifyContent: 'center', alignItems: 'center',
                                 shadowColor: features[step].color, shadowOpacity: 0.3, shadowRadius: 15
                             }}>
-                                <Ionicons name={features[step].icon} size={34} color={features[step].color} />
+                                {features[step].icon === "auto-fix" ? (
+                                     <MaterialCommunityIcons name="auto-fix" size={34} color={features[step].color} />
+                                ) : (
+                                    <Ionicons name={features[step].icon} size={34} color={features[step].color} />
+                                )}
                             </View>
                         </Animated.View>
 
