@@ -15,7 +15,8 @@ import {
     Pressable,
     TextInput,
     TouchableOpacity,
-    View
+    View,
+    Modal
 } from "react-native";
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
@@ -28,7 +29,7 @@ import { SyncLoading } from "../../components/SyncLoading";
 import { Text } from "../../components/Text";
 import { useUser } from "../../context/UserContext";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 const API_BASE = "https://oreblogda.com/api";
 const LIMIT = 5;
 
@@ -38,12 +39,16 @@ const fetcher = (url) => fetch(url).then((res) => res.json());
 // ✨ AURA UTILITY HELPER
 // ----------------------
 const getAuraTier = (rank) => {
-    if (!rank) return { color: '#3b82f6', label: 'NEUTRAL', shadow: 'rgba(59, 130, 246, 0.3)' };
+    if (!rank) return { color: '#3b82f6', label: 'NEUTRAL' };
     switch (rank) {
-        case 1: return { color: '#fbbf24', label: 'PROTAGONIST', shadow: 'rgba(251, 191, 36, 0.5)' };
-        case 2: return { color: '#60a5fa', label: 'RIVAL', shadow: 'rgba(96, 165, 250, 0.5)' };
-        case 3: return { color: '#cd7f32', label: 'SENSEI', shadow: 'rgba(205, 127, 50, 0.5)' };
-        default: return { color: '#a78bfa', label: 'ELITE', shadow: 'rgba(167, 139, 250, 0.3)' };
+        case 1: return { color: '#fbbf24', label: 'PROTAGONIST' };
+        case 2: return { color: '#60a5fa', label: 'RIVAL' };
+        case 3: return { color: '#cd7f32', label: 'SENSEI' };
+        case 4: return { color: '#a78bfa', label: 'ELITE' };
+        case 5: return { color: '#f87171', label: 'SPECIAL' };
+        default: 
+            if (rank <= 10) return { color: '#34d399', label: 'VANGUARD' };
+            return { color: '#3b82f6', label: 'ACTIVE' };
     }
 };
 
@@ -63,10 +68,14 @@ export default function MobileProfilePage() {
     const [imageFile, setImageFile] = useState(null);
     const [isUpdating, setIsUpdating] = useState(false);
 
+    // 🔹 Modal States
+    const [showAuraInfo, setShowAuraInfo] = useState(false);
+    const [showExpInfo, setShowExpInfo] = useState(false);
+
     // Animations
     const scanAnim = useRef(new Animated.Value(0)).current;
     const loadingAnim = useRef(new Animated.Value(0)).current;
-    const auraFillAnim = useRef(new Animated.Value(0)).current; // 🔹 New Aura Fill Anim
+    const auraFillAnim = useRef(new Animated.Value(0)).current; 
     const [copied, setCopied] = useState(false);
 
     const CACHE_KEY_USER_EXTRAS = `user_profile_cache_${user?.deviceId}`;
@@ -79,7 +88,6 @@ export default function MobileProfilePage() {
         }
     };
 
-    // Spin Animation
     useEffect(() => {
         Animated.loop(
             Animated.timing(scanAnim, {
@@ -91,14 +99,13 @@ export default function MobileProfilePage() {
         ).start();
     }, []);
 
-    // Aura Fill Animation
     useEffect(() => {
         if (user?.weeklyAura !== undefined) {
             auraFillAnim.setValue(0);
             Animated.timing(auraFillAnim, {
                 toValue: 1,
-                duration: 1500,
-                easing: Easing.out(Easing.back(1)),
+                duration: 1800,
+                easing: Easing.out(Easing.back(1.2)),
                 useNativeDriver: false,
             }).start();
         }
@@ -204,7 +211,7 @@ export default function MobileProfilePage() {
     const isReachingEnd = data && data[data.length - 1]?.posts.length < LIMIT;
     const isFetchingNextPage = isValidating && data && typeof data[size - 1] === "undefined";
 
-    // Ranking Logic
+    // 🔹 Ranking Logic
     const count = totalPosts;
     const rankTitle = count > 200 ? "Master_Writer" : count > 150 ? "Elite_Writer" : count > 100 ? "Senior_Writer" : count > 50 ? "Novice_Writer" : count > 25 ? "Senior_Researcher" : "Novice_Researcher";
     const rankIcon = count > 200 ? "👑" : count > 150 ? "💎" : count > 100 ? "🔥" : count > 50 ? "⚔️" : count > 25 ? "📜" : "🛡️";
@@ -212,12 +219,11 @@ export default function MobileProfilePage() {
     const progress = Math.min((count / nextMilestone) * 100, 100);
 
     // 🔹 Aura Logic
-    const auraInfo = getAuraTier(user?.previousRank);
+    const auraTier = getAuraTier(user?.previousRank);
     const weeklyAura = user?.weeklyAura || 0;
-    // We treat 1000 as a "Soft Max" for visual scale, but it can go higher
-    const auraProgressWidth = auraFillAnim.interpolate({
+    const auraBarWidth = auraFillAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: ['0%', `${Math.min((weeklyAura / 500) * 100, 100)}%`]
+        outputRange: ['0%', `${Math.min((weeklyAura / 100) * 100, 100)}%`]
     });
 
     const pickImage = async () => {
@@ -308,6 +314,36 @@ export default function MobileProfilePage() {
         ]);
     };
 
+    // 🔹 INFO MODAL COMPONENT
+    const InfoModal = ({ visible, onClose, title, subtitle, points }) => (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <View className="flex-1 justify-end bg-black/60">
+                <Pressable className="flex-1" onPress={onClose} />
+                <View className="bg-white dark:bg-[#0f0f0f] rounded-t-[40px] p-8 pb-12 border-t border-gray-100 dark:border-gray-800">
+                    <View className="w-12 h-1 bg-gray-200 dark:bg-gray-800 rounded-full self-center mb-6" />
+                    <Text className="text-2xl font-black uppercase italic dark:text-white mb-2">{title}</Text>
+                    <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-6 leading-relaxed">{subtitle}</Text>
+                    
+                    <View className="space-y-4">
+                        {points.map((p, i) => (
+                            <View key={i} className="flex-row items-start gap-4 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
+                                <View className="mt-1"><Ionicons name={p.icon} size={16} color={p.color} /></View>
+                                <View className="flex-1">
+                                    <Text className="text-[10px] font-black uppercase text-gray-400 mb-1">{p.label}</Text>
+                                    <Text className="text-xs font-bold dark:text-gray-200">{p.text}</Text>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+
+                    <TouchableOpacity onPress={onClose} className="mt-8 bg-black dark:bg-white h-14 rounded-2xl items-center justify-center">
+                        <Text className="text-white dark:text-black font-black uppercase tracking-widest text-xs">Acknowledge</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+
     const listHeader = useMemo(() => (
         <View className="px-6">
             <View className="flex-row items-center gap-4 mb-10 border-b border-gray-100 dark:border-gray-800 pb-6">
@@ -317,20 +353,10 @@ export default function MobileProfilePage() {
 
             <View className="items-center mb-10">
                 <View className="relative">
-                    <Animated.View
-                        style={{ transform: [{ rotate: spin }] }}
-                        className="absolute -inset-4 border border-dashed border-blue-600/30 rounded-full"
-                    />
-                    <View 
-                        className="absolute -inset-1 border-2 rounded-full opacity-50" 
-                        style={{ borderColor: auraInfo.color }} 
-                    />
-
+                    <Animated.View style={{ transform: [{ rotate: spin }] }} className="absolute -inset-4 border border-dashed border-blue-600/30 rounded-full" />
+                    <View className="absolute -inset-1 border-2 rounded-full opacity-50" style={{ borderColor: auraTier.color }} />
                     <TouchableOpacity onPress={pickImage} className="w-40 h-40 rounded-full overflow-hidden border-4 border-white dark:border-[#0a0a0a] bg-gray-900 shadow-2xl">
-                        <Image
-                            source={{ uri: preview || user?.profilePic?.url || "https://via.placeholder.com/150" }}
-                            className="w-full h-full object-cover"
-                        />
+                        <Image source={{ uri: preview || user?.profilePic?.url || "https://via.placeholder.com/150" }} className="w-full h-full object-cover" />
                         <View className="absolute inset-0 bg-black/40 items-center justify-center">
                             <Text className="text-[10px] font-black uppercase tracking-widest text-white">Change DNA</Text>
                         </View>
@@ -338,80 +364,59 @@ export default function MobileProfilePage() {
                 </View>
 
                 <View className="mt-6 items-center">
-                    <Text 
-                        className="text-xl font-black uppercase tracking-tighter" 
-                        style={{ color: auraInfo.color }}
-                    >
-                        {username || user?.username || "GUEST"}
-                    </Text>
+                    <Text className="text-xl font-black uppercase tracking-tighter" style={{ color: auraTier.color }}>{username || user?.username || "GUEST"}</Text>
                     <View className="flex-row items-center gap-2 mt-1">
                         <Text className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em]">Class: {rankTitle}</Text>
                         {user?.previousRank && (
-                            <View className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
-                                <Text style={{ color: auraInfo.color, fontSize: 8, fontWeight: '900' }}>{auraInfo.label}</Text>
+                            <View className="px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                                <Text style={{ fontSize: 7, fontWeight: '900', color: auraTier.color }}>{auraTier.label}</Text>
                             </View>
                         )}
                     </View>
                 </View>
 
-                {/* 🔹 NEW AURA PROGRESS SECTION */}
-                <View className="mt-8 w-full px-4">
+                {/* 🔹 Aura Meter (Tap to open Modal) */}
+                <Pressable onPress={() => setShowAuraInfo(true)} className="mt-8 w-full px-4 active:opacity-70">
                     <View className="flex-row justify-between items-end mb-2">
                         <View className="flex-row items-center gap-2">
                             <MaterialCommunityIcons name="auto-fix" size={14} color="#a78bfa" />
-                            <Text className="text-[10px] font-black uppercase tracking-widest dark:text-white">Current Weekly Aura</Text>
+                            <Text className="text-[10px] font-black uppercase tracking-widest dark:text-white">Active Aura Meter</Text>
                         </View>
-                        <Text className="text-[10px] font-mono font-bold text-purple-500">
-                            {weeklyAura} PTS
-                        </Text>
+                        <Text className="text-[10px] font-mono font-bold text-purple-500">{weeklyAura} PTS</Text>
                     </View>
                     <View className="h-3 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-200 dark:border-white/10 p-[2px]">
-                        <Animated.View
-                            style={{ 
-                                width: auraProgressWidth,
-                                backgroundColor: auraInfo.color,
-                                shadowColor: auraInfo.color,
-                                shadowOffset: { width: 0, height: 0 },
-                                shadowOpacity: 0.8,
-                                shadowRadius: 10,
-                            }}
-                            className="h-full rounded-full"
-                        />
+                        <Animated.View style={{ width: auraBarWidth, backgroundColor: auraTier.color }} className="h-full rounded-full" />
                     </View>
-                    <Text className="text-[8px] text-center text-gray-500 mt-2 uppercase font-bold tracking-widest">Resets every Sunday at Midnight</Text>
-                </View>
+                </Pressable>
 
-                {/* Post EXP Progress */}
-                <View className="mt-6 w-full px-4 opacity-60">
+                {/* 🔹 Writer EXP (Tap to open Modal) */}
+                <Pressable onPress={() => setShowExpInfo(true)} className="mt-6 w-full px-4 opacity-50 active:opacity-100">
                     <View className="flex-row justify-between items-end mb-2">
-                        <Text className="text-[9px] font-black uppercase tracking-widest dark:text-gray-400">Writer Level Progress</Text>
-                        <Text className="text-[9px] font-mono font-bold text-gray-500">EXP: {count}/{nextMilestone}</Text>
+                        <View className="flex-row items-center gap-2">
+                            <Text className="text-sm">{rankIcon}</Text>
+                            <Text className="text-[9px] font-black uppercase tracking-widest dark:text-gray-400">Writer EXP</Text>
+                        </View>
+                        <Text className="text-[9px] font-mono font-bold text-gray-500">{count} / {nextMilestone}</Text>
                     </View>
                     <View className="h-1 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <View style={{ width: `${progress}%` }} className="h-full bg-gray-400" />
                     </View>
-                </View>
+                </Pressable>
             </View>
 
-            {/* Form Fields */}
+            {/* Rest of the UI Preserved */}
             <View className="space-y-6">
                 <View className="space-y-1">
                     <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Display Name / Alias</Text>
-                    <TextInput
-                        value={username}
-                        onChangeText={setUsername}
-                        placeholder="Enter alias..."
-                        placeholderTextColor="#4b5563"
-                        className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 rounded-2xl text-sm font-bold dark:text-white"
-                    />
+                    <TextInput value={username} onChangeText={setUsername} placeholder="Enter alias..." placeholderTextColor="#4b5563" className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 p-4 rounded-2xl text-sm font-bold dark:text-white" />
                 </View>
 
                 <View className="space-y-1 mt-4">
                     <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Neural Uplink</Text>
                     <View className="bg-gray-50 dark:bg-[#0a0a0a] border border-gray-100 dark:border-gray-800 p-4 rounded-2xl flex-row justify-between items-center">
                         <View className="flex-1 mr-4">
-                            <Text numberOfLines={1} ellipsizeMode="middle" className={`text-xs font-bold font-mono ${showId ? 'text-gray-500' : 'text-blue-500/40'}`}>
-                                {showId ? (user?.deviceId || "SEARCHING...") : "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"} 
+                            <Text numberOfLines={1} ellipsizeMode="middle" className={`text-xs font-bold font-mono ${showId ? 'text-gray-500 dark:text-gray-400' : 'text-blue-500/40'}`}>
+                                {showId ? (user?.deviceId || "SEARCHING...") : "•••• •••• •••• ••••"} 
                             </Text>
                         </View>
                         <View className="flex-row items-center gap-2">
@@ -427,23 +432,11 @@ export default function MobileProfilePage() {
 
                 <View className="space-y-1 mt-4">
                     <Text className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Biography / Lore</Text>
-                    <TextInput
-                        multiline
-                        value={description}
-                        onChangeText={setDescription}
-                        className="w-full bg-white dark:bg-black/40 border-2 border-gray-100 dark:border-gray-800 rounded-2xl p-4 text-sm font-medium dark:text-white min-h-[120px]"
-                        style={{ textAlignVertical: 'top' }}
-                    />
+                    <TextInput multiline value={description} onChangeText={setDescription} className="w-full bg-white dark:bg-black/40 border-2 border-gray-100 dark:border-gray-800 rounded-2xl p-4 text-sm font-medium dark:text-white min-h-[120px]" style={{ textAlignVertical: 'top' }} />
                 </View>
 
-                <TouchableOpacity
-                    onPress={handleUpdate}
-                    disabled={isUpdating}
-                    className="relative w-full h-14 bg-blue-600 rounded-2xl overflow-hidden items-center justify-center mt-6"
-                >
-                    <Text className="relative z-10 text-white font-black uppercase italic tracking-widest text-xs">
-                        {isUpdating ? "Syncing Changes..." : "Update Character Data"}
-                    </Text>
+                <TouchableOpacity onPress={handleUpdate} disabled={isUpdating} className="relative w-full h-14 bg-blue-600 rounded-2xl overflow-hidden items-center justify-center mt-6">
+                    <Text className="relative z-10 text-white font-black uppercase italic tracking-widest text-xs">{isUpdating ? "Syncing Changes..." : "Update Character Data"}</Text>
                     {isUpdating && <Animated.View className="absolute bottom-0 h-1 bg-white/40 w-full" style={{ transform: [{ translateX }] }} />}
                 </TouchableOpacity>
             </View>
@@ -462,6 +455,33 @@ export default function MobileProfilePage() {
     return (
         <View className="flex-1 bg-white dark:bg-[#0a0a0a]" style={{ paddingTop: insets.top }}>
             <AppOnboarding />
+            
+            {/* 🔹 AURA INFO MODAL */}
+            <InfoModal 
+                visible={showAuraInfo} 
+                onClose={() => setShowAuraInfo(false)}
+                title="Weekly Aura"
+                subtitle="Your weekly performance rating compared to other players."
+                points={[
+                    { icon: 'trending-up', color: '#a78bfa', label: 'HOW TO EARN', text: 'Gain Aura through post engagement, likes, and comments from the community.' },
+                    { icon: 'time-outline', color: '#fbbf24', label: 'RESET CYCLE', text: 'Aura resets every Sunday. Top players receive special Titles and Profile Glows.' },
+                    { icon: 'flash-outline', color: '#3b82f6', label: 'MULTIPLIERS', text: 'High-quality, long-form posts generate 2x more Aura than short logs.' }
+                ]}
+            />
+
+            {/* 🔹 EXP INFO MODAL */}
+            <InfoModal 
+                visible={showExpInfo} 
+                onClose={() => setShowExpInfo(false)}
+                title="Writer EXP"
+                subtitle="Your permanent lifetime progression and rank."
+                points={[
+                    { icon: 'book-outline', color: '#34d399', label: 'THE GRIND', text: 'Every post published adds +10 EXP to your account permanently.' },
+                    { icon: 'ribbon-outline', color: '#f87171', label: 'RANK UP', text: 'Climb from Novice to Master Writer to unlock secret UI themes and badges.' },
+                    { icon: 'shield-outline', color: '#60a5fa', label: 'NO DECAY', text: 'Unlike Aura, EXP never resets. It represents your history in this world.' }
+                ]}
+            />
+
             <FlatList
                 data={posts}
                 keyExtractor={(item) => item._id}
