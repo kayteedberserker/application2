@@ -14,6 +14,7 @@ import {
 	Platform,
 	PanResponder,
 	Keyboard,
+	KeyboardAvoidingView,
 } from "react-native";
 import Animated, {
 	Easing,
@@ -95,18 +96,6 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 	const messageRefs = useRef({});
 	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 	const scrollOffset = useRef(0);
-	const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-	// Manual Keyboard Tracking
-	useEffect(() => {
-		const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => {
-			setKeyboardHeight(e.endCoordinates.height);
-		});
-		const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => {
-			setKeyboardHeight(0);
-		});
-		return () => { showSub.remove(); hideSub.remove(); };
-	}, []);
 
 	useEffect(() => {
 		if (visible) {
@@ -118,7 +107,6 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 	}, [visible]);
 
 	useEffect(() => {
-		// Only show toast if new message arrived while the user was scrolled up
 		if (visible && comment?.replies?.length > 0 && !shouldAutoScroll && scrollOffset.current > 100) {
 			setShowNewMessageToast(true);
 		}
@@ -128,8 +116,8 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 		PanResponder.create({
 			onStartShouldSetPanResponder: () => false,
 			onMoveShouldSetPanResponder: (e, gs) => {
-				// Only allow drag-down-to-close if at top of scroll
-				return gs.dy > 10 && scrollOffset.current <= 0;
+				// We allow swipe only if the keyboard is closed and we are at the top of the scroll
+				return gs.dy > 10 && scrollOffset.current <= 5 && !Keyboard.isVisible();
 			},
 			onPanResponderMove: (e, gs) => { if (gs.dy > 0) panY.setValue(gs.dy); },
 			onPanResponderRelease: (e, gs) => {
@@ -161,128 +149,134 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 
 	return (
 		<Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
-			<View className="flex-1 bg-black/60 justify-end">
-				<RNAnimated.View 
-					style={{ 
-						transform: [{ translateY: panY }], 
-						height: '92%', 
-						paddingBottom: Platform.OS === 'ios' ? keyboardHeight : 0 
-					}} 
-					className="bg-white dark:bg-[#0a0a0a] rounded-t-[40px] border-t-2 border-blue-600/40 overflow-hidden"
+			<View className="flex-1 bg-black/60">
+				{/* Back button/Area to close if clicked outside */}
+				<Pressable className="flex-1" onPress={() => { Keyboard.dismiss(); onClose(); }} />
+				
+				<KeyboardAvoidingView 
+					behavior={Platform.OS === "ios" ? "padding" : "height"}
+					keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
 				>
-					{/* Header / Draggable Area */}
-					<View {...panResponder.panHandlers} className="items-center py-5 bg-white dark:bg-[#0a0a0a]">
-						<View className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full" />
-					</View>
+					<RNAnimated.View 
+						style={{ 
+							transform: [{ translateY: panY }], 
+							height: SCREEN_HEIGHT * 0.85, 
+						}} 
+						className="bg-white dark:bg-[#0a0a0a] rounded-t-[40px] border-t-2 border-blue-600/40 overflow-hidden"
+					>
+						{/* Header / Draggable Area */}
+						<View {...panResponder.panHandlers} className="items-center py-5 bg-white dark:bg-[#0a0a0a]">
+							<View className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full" />
+						</View>
 
-					<View className="flex-1">
-						{showNewMessageToast && (
-							<Animated.View entering={FadeIn} exiting={FadeOut} className="absolute top-24 self-center z-50">
-								<Pressable onPress={jumpToBottom} className="flex-row items-center bg-blue-600 px-4 py-2 rounded-full shadow-xl border border-white/20">
-									<Ionicons name="arrow-down" size={14} color="white" />
-									<Text className="text-white text-[10px] font-black uppercase ml-2">New Signals Detected</Text>
-								</Pressable>
-							</Animated.View>
-						)}
+						<View className="flex-1">
+							{showNewMessageToast && (
+								<Animated.View entering={FadeIn} exiting={FadeOut} className="absolute top-4 self-center z-50">
+									<Pressable onPress={jumpToBottom} className="flex-row items-center bg-blue-600 px-4 py-2 rounded-full shadow-xl border border-white/20">
+										<Ionicons name="arrow-down" size={14} color="white" />
+										<Text className="text-white text-[10px] font-black uppercase ml-2">New Signals Detected</Text>
+									</Pressable>
+								</Animated.View>
+							)}
 
-						<ScrollView 
-							ref={scrollViewRef} 
-							className="flex-1" 
-							onScroll={(e) => { scrollOffset.current = e.nativeEvent.contentOffset.y; }}
-							scrollEventThrottle={16}
-							showsVerticalScrollIndicator={false}
-							stickyHeaderIndices={[0]}
-							onContentSizeChange={() => {
-								if (shouldAutoScroll) {
-									scrollViewRef.current?.scrollToEnd({ animated: true });
-									setShouldAutoScroll(false);
-								}
-							}}
-						>
-							<View className="bg-white dark:bg-[#0a0a0a] px-6 pb-4 border-b border-gray-100 dark:border-gray-800 shadow-sm">
-								<Pressable onLongPress={() => {
-									Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-									setReplyingTo({ name: comment.name, text: comment.text, id: 'anchor' });
-								}}>
-									<Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Anchor Signal</Text>
-									<Text className="text-sm font-black dark:text-white">{comment.name}</Text>
-									<Text className="text-xs text-gray-600 dark:text-gray-400 font-bold mt-1 leading-5">{comment.text}</Text>
-								</Pressable>
-							</View>
-
-							<View className="px-6 pt-6">
-								<Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-6">Response Feed</Text>
-								{comment.replies && comment.replies.map((reply, idx) => (
-									<View key={reply._id || idx} onLayout={(event) => { messageRefs.current[reply._id] = event.nativeEvent.layout; }} className="mb-8">
-										<Pressable onLongPress={() => {
-											Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-											setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
-										}} className="border-l-2 border-gray-100 dark:border-gray-800 pl-4">
-											{reply.replyTo && (
-												<Pressable onPress={() => scrollToMessage(reply.replyTo.id)} className="bg-gray-100 dark:bg-white/5 p-2 rounded-lg border-l-4 border-blue-500 mb-2 opacity-80">
-													<Text className="text-[8px] font-black text-blue-500 uppercase">{reply.replyTo.name}</Text>
-													<Text className="text-[10px] text-gray-500 dark:text-gray-400 font-bold" numberOfLines={1}>{reply.replyTo.text}</Text>
-												</Pressable>
-											)}
-											<Text className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">{reply.name}</Text>
-											<Text className="text-xs text-gray-600 dark:text-gray-300 font-bold mt-1 leading-5">{reply.text}</Text>
-											<View className="flex-row items-center justify-between mt-3">
-												<Text className="text-[8px] font-bold text-gray-400 uppercase">{new Date(reply.date).toLocaleTimeString()}</Text>
-												<Pressable onPress={() => {
-													Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-													setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
-												}}>
-													<Text className="text-blue-500 text-[9px] font-black uppercase tracking-widest">Reply</Text>
-												</Pressable>
-											</View>
-										</Pressable>
-									</View>
-								))}
-								<View className="h-20" />
-							</View>
-						</ScrollView>
-
-						<View className="p-5 pb-10 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-gray-800">
-							{replyingTo && (
-								<View className="flex-row items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-t-2xl border-l-4 border-blue-600 mb-[-5px] pb-4">
-									<View className="flex-1">
-										<Text className="text-[9px] font-black text-blue-600 uppercase">Replying to {replyingTo.name}</Text>
-										<Text className="text-[11px] text-gray-500 dark:text-gray-400 font-bold" numberOfLines={1}>{replyingTo.text}</Text>
-									</View>
-									<Pressable onPress={() => setReplyingTo(null)} className="ml-2">
-										<Ionicons name="close-circle" size={20} color="#2563eb" />
+							<ScrollView 
+								ref={scrollViewRef} 
+								className="flex-1" 
+								onScroll={(e) => { scrollOffset.current = e.nativeEvent.contentOffset.y; }}
+								scrollEventThrottle={16}
+								showsVerticalScrollIndicator={false}
+								stickyHeaderIndices={[0]}
+								onContentSizeChange={() => {
+									if (shouldAutoScroll) {
+										scrollViewRef.current?.scrollToEnd({ animated: true });
+									}
+								}}
+							>
+								<View className="bg-white dark:bg-[#0a0a0a] px-6 pb-4 border-b border-gray-100 dark:border-gray-800 shadow-sm">
+									<Pressable onLongPress={() => {
+										Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+										setReplyingTo({ name: comment.name, text: comment.text, id: 'anchor' });
+									}}>
+										<Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Anchor Signal</Text>
+										<Text className="text-sm font-black dark:text-white">{comment.name}</Text>
+										<Text className="text-xs text-gray-600 dark:text-gray-400 font-bold mt-1 leading-5">{comment.text}</Text>
 									</Pressable>
 								</View>
-							)}
-							<View className="flex-row gap-3 items-end">
-								<TextInput
-									placeholder="WRITE RESPONSE..."
-									placeholderTextColor="#6b7280"
-									multiline
-									className="flex-1 bg-gray-50 dark:bg-gray-950 p-4 rounded-2xl text-[12px] font-black dark:text-white max-h-32 border border-gray-100 dark:border-gray-800"
-									value={replyText}
-									onChangeText={setReplyText}
-								/>
-								<Pressable
-									onPress={() => {
-										if (replyText.trim() && !isPosting) {
-											Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-											onReply(comment._id, replyText, replyingTo);
-											setReplyText("");
-											setReplyingTo(null);
-											setShouldAutoScroll(true);
-											Keyboard.dismiss();
-										}
-									}}
-									disabled={isPosting}
-									className="bg-blue-600 w-14 h-14 rounded-2xl items-center justify-center shadow-lg"
-								>
-									{isPosting ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="send" size={20} color="white" />}
-								</Pressable>
+
+								<View className="px-6 pt-6">
+									<Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-6">Response Feed</Text>
+									{comment.replies && comment.replies.map((reply, idx) => (
+										<View key={reply._id || idx} onLayout={(event) => { messageRefs.current[reply._id] = event.nativeEvent.layout; }} className="mb-8">
+											<Pressable onLongPress={() => {
+												Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+												setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
+											}} className="border-l-2 border-gray-100 dark:border-gray-800 pl-4">
+												{reply.replyTo && (
+													<Pressable onPress={() => scrollToMessage(reply.replyTo.id)} className="bg-gray-100 dark:bg-white/5 p-2 rounded-lg border-l-4 border-blue-500 mb-2 opacity-80">
+														<Text className="text-[8px] font-black text-blue-500 uppercase">{reply.replyTo.name}</Text>
+														<Text className="text-[10px] text-gray-500 dark:text-gray-400 font-bold" numberOfLines={1}>{reply.replyTo.text}</Text>
+													</Pressable>
+												)}
+												<Text className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">{reply.name}</Text>
+												<Text className="text-xs text-gray-600 dark:text-gray-300 font-bold mt-1 leading-5">{reply.text}</Text>
+												<View className="flex-row items-center justify-between mt-3">
+													<Text className="text-[8px] font-bold text-gray-400 uppercase">{new Date(reply.date).toLocaleTimeString()}</Text>
+													<Pressable onPress={() => {
+														Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+														setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
+													}}>
+														<Text className="text-blue-500 text-[9px] font-black uppercase tracking-widest">Reply</Text>
+													</Pressable>
+												</View>
+											</Pressable>
+										</View>
+									))}
+									<View className="h-20" />
+								</View>
+							</ScrollView>
+
+							<View className="p-5 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-gray-800">
+								{replyingTo && (
+									<View className="flex-row items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-t-2xl border-l-4 border-blue-600 mb-[-1px] pb-4">
+										<View className="flex-1">
+											<Text className="text-[9px] font-black text-blue-600 uppercase">Replying to {replyingTo.name}</Text>
+											<Text className="text-[11px] text-gray-500 dark:text-gray-400 font-bold" numberOfLines={1}>{replyingTo.text}</Text>
+										</View>
+										<Pressable onPress={() => setReplyingTo(null)} className="ml-2">
+											<Ionicons name="close-circle" size={20} color="#2563eb" />
+										</Pressable>
+									</View>
+								)}
+								<View className="flex-row gap-3 items-end mb-6">
+									<TextInput
+										placeholder="WRITE RESPONSE..."
+										placeholderTextColor="#6b7280"
+										multiline
+										className="flex-1 bg-gray-50 dark:bg-gray-950 p-4 rounded-2xl text-[12px] font-black dark:text-white max-h-32 border border-gray-100 dark:border-gray-800"
+										value={replyText}
+										onChangeText={setReplyText}
+									/>
+									<Pressable
+										onPress={() => {
+											if (replyText.trim() && !isPosting) {
+												Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+												onReply(comment._id, replyText, replyingTo);
+												setReplyText("");
+												setReplyingTo(null);
+												setShouldAutoScroll(true);
+												Keyboard.dismiss();
+											}
+										}}
+										disabled={isPosting}
+										className="bg-blue-600 w-14 h-14 rounded-2xl items-center justify-center shadow-lg"
+									>
+										{isPosting ? <ActivityIndicator size="small" color="white" /> : <Ionicons name="send" size={20} color="white" />}
+									</Pressable>
+								</View>
 							</View>
 						</View>
-					</View>
-				</RNAnimated.View>
+					</RNAnimated.View>
+				</KeyboardAvoidingView>
 			</View>
 		</Modal>
 	);
@@ -343,8 +337,6 @@ export default function CommentSection({ postId }) {
 
 			if (res.ok) {
 				Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-				
-				// Use the actual comment returned by the server to update the local state
 				const serverComment = responseData.comment;
 
 				if (parentId) {
@@ -444,4 +436,4 @@ export default function CommentSection({ postId }) {
 			/>
 		</View>
 	);
-							  }
+}
