@@ -6,10 +6,11 @@ import Toast from "react-native-toast-message";
 import useSWR from "swr";
 import { useUser } from "../context/UserContext";
 import { Text } from "./Text";
+import apiFetch from "../utils/apiFetch"
 
 const API_URL = "https://oreblogda.com";
 
-const fetcher = (url) => fetch(url).then(res => res.json());
+const fetcher = (url) => apiFetch(url).then(res => res.json());
 
 export default function Poll({ poll, postId, readOnly = false }) {
     const { user } = useUser();
@@ -90,9 +91,8 @@ export default function Poll({ poll, postId, readOnly = false }) {
         );
 
         try {
-            const res = await fetch(`${API_URL}/api/posts/${postId}`, {
+            const res = await apiFetch(`${API_URL}/api/posts/${postId}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     action: "vote",
                     fingerprint: user.deviceId,
