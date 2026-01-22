@@ -7,6 +7,8 @@ import AppBanner from "../../../components/AppBanner";
 import PostCard from "../../../components/PostCard";
 import { SyncLoading } from "../../../components/SyncLoading";
 import { Text } from "../../../components/Text";
+import apiFetch from "../../../utils/apiFetch"
+
 
 const API_BASE = "https://oreblogda.com/api"
 
@@ -56,8 +58,8 @@ export default function AuthorPage() {
     setLoading(true);
     try {
       const [userRes, postRes] = await Promise.all([
-        fetch(`${API_BASE}/users/${id}`),
-        fetch(`${API_BASE}/posts?author=${id}&page=1&limit=6`),
+        apiFetch(`${API_BASE}/users/${id}`),
+        apiFetch(`${API_BASE}/posts?author=${id}&page=1&limit=6`),
       ]);
       const userData = await userRes.json();
       const postData = await postRes.json();
@@ -79,7 +81,7 @@ export default function AuthorPage() {
     const nextPage = page + 1;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/posts?author=${id}&page=${nextPage}&limit=6`);
+      const res = await apiFetch(`${API_BASE}/posts?author=${id}&page=${nextPage}&limit=6`);
       const data = await res.json();
       if (res.ok && data.posts.length > 0) {
         setPosts((prev) => [...prev, ...data.posts]);
