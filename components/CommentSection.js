@@ -116,11 +116,14 @@ const SingleComment = ({ comment, onOpenDiscussion }) => {
 };
 
 // --- Discussion Drawer Component ---
-const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postId }) => {
+const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, slug }) => {
 	const [replyText, setReplyText] = useState("");
+	const [showJumpToBottom, setShowJumpToBottom] = useState(false);
 	const panY = useRef(new RNAnimated.Value(0)).current;
 	const scrollViewRef = useRef(null);
 	const scrollOffset = useRef(0);
+	const contentHeight = useRef(0);
+	const scrollViewHeight = useRef(0);
 
 	const displayComments = useMemo(() => {
 		if (!comment) return [];
@@ -130,6 +133,10 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 	useEffect(() => {
 		if (visible) {
 			panY.setValue(0);
+			// Small timeout to allow content to render before scrolling
+			setTimeout(() => {
+				scrollViewRef.current?.scrollToEnd({ animated: true });
+			}, 300);
 		}
 	}, [visible]);
 
@@ -151,12 +158,21 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 	const handleShare = async () => {
 		if (!comment) return;
 		try {
+			// Using slug instead of postId as requested
 			await Share.share({
-				message: `Join the discussion on OreBlogda: ${API_URL}/posts/${postId}?discussion=${comment._id}`,
+				message: `Join the discussion on OreBlogda: ${API_URL}/posts/${slug}?discussion=${comment._id}`,
 			});
 		} catch (error) {
 			console.log(error.message);
 		}
+	};
+
+	const handleScroll = (event) => {
+		const offset = event.nativeEvent.contentOffset.y;
+		scrollOffset.current = offset;
+		const totalScrollable = contentHeight.current - scrollViewHeight.current;
+		// Show button if we are scrolled up more than 100 units from the bottom
+		setShowJumpToBottom(totalScrollable - offset > 100);
 	};
 
 	if (!comment) return null;
@@ -171,14 +187,12 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 						style={{ transform: [{ translateY: panY }], height: SCREEN_HEIGHT * 0.9 }} 
 						className="bg-white dark:bg-[#0a0a0a] rounded-t-[40px] border-t-2 border-blue-600/40 overflow-hidden"
 					>
-						{/* HEADER WITH INPUT (So it is never covered by keyboard) */}
-						<View className="bg-white dark:bg-[#0a0a0a] border-b border-gray-100 dark:border-gray-800">
-							{/* Drag Handle */}
+						{/* HEADER WITH INPUT */}
+						<View className="bg-white dark:bg-[#0a0a0a] border-b border-gray-100 dark:border-gray-800 z-50">
 							<View {...panResponder.panHandlers} className="items-center py-4">
 								<View className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full" />
 							</View>
 
-							{/* Top Controls: Close and Share */}
 							<View className="flex-row items-center justify-between px-6 pb-2">
 								<Pressable onPress={onClose} className="bg-gray-100 dark:bg-white/10 px-4 py-2 rounded-full">
 									<Text className="text-[10px] font-black text-blue-600 uppercase">Close</Text>
@@ -189,7 +203,6 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 								</Pressable>
 							</View>
 
-							{/* THE INPUT AT THE TOP */}
 							<View className="p-5 flex-row gap-3 items-center">
 								<TextInput
 									placeholder="WRITE RESPONSE..."
@@ -206,6 +219,8 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 											onReply(comment._id, replyText);
 											setReplyText("");
 											Keyboard.dismiss();
+											// Scroll to bottom after posting
+											setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 500);
 										}
 									}}
 									disabled={isPosting}
@@ -217,34 +232,58 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 						</View>
 
 						{/* MESSAGE LIST */}
-						<ScrollView 
-							ref={scrollViewRef} 
-							className="flex-1" 
-							onScroll={(e) => { scrollOffset.current = e.nativeEvent.contentOffset.y; }}
-							scrollEventThrottle={16}
-							showsVerticalScrollIndicator={false}
-							onContentSizeChange={() => scrollViewRef.current?.scrollTo({ y: 0, animated: true })}
-						>
-							{/* Anchor (The original comment) */}
-							<View className="bg-blue-50/30 dark:bg-blue-900/5 px-6 py-6 border-b border-gray-100 dark:border-gray-800">
-								<Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Anchor Signal</Text>
-								<Text className="text-sm font-black dark:text-white">{comment.name}</Text>
-								<Text className="text-xs text-gray-600 dark:text-gray-400 font-bold mt-1 leading-5">{comment.text}</Text>
-							</View>
+						<View className="flex-1 relative">
+							{showJumpToBottom && (
+								<Animated.View entering={FadeIn} exiting={FadeOut} className="absolute bottom-10 self-center z-50">
+									<Pressable 
+										onPress={() => {
+											Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+											scrollViewRef.current?.scrollToEnd({ animated: true });
+										}} 
+										className="flex-row items-center bg-blue-600 px-4 py-2 rounded-full shadow-2xl"
+									>
+										<Ionicons name="arrow-down" size={14} color="white" />
+										<Text className="text-white text-[10px] font-black uppercase ml-2">Jump to Bottom</Text>
+									</Pressable>
+								</Animated.View>
+							)}
 
-							<View className="px-6 pt-6">
-								<Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-6">Live Feed</Text>
-								
-								{displayComments.map((reply, idx) => (
-									<View key={reply._id || idx} className="mb-6 border-l-2 border-gray-100 dark:border-gray-800 pl-4">
-										<Text className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">{reply.name}</Text>
-										<Text className="text-xs text-gray-600 dark:text-gray-300 font-bold mt-1 leading-5">{reply.text}</Text>
-										<Text className="text-[8px] font-bold text-gray-400 uppercase mt-2">{new Date(reply.date).toLocaleTimeString()}</Text>
-									</View>
-								))}
-								<View className="h-40" />
-							</View>
-						</ScrollView>
+							<ScrollView 
+								ref={scrollViewRef} 
+								className="flex-1" 
+								onScroll={handleScroll}
+								scrollEventThrottle={16}
+								onLayout={(e) => scrollViewHeight.current = e.nativeEvent.layout.height}
+								onContentSizeChange={(w, h) => {
+									contentHeight.current = h;
+									// Auto-scroll on initial load or when new messages arrive
+									if (!showJumpToBottom) {
+										scrollViewRef.current?.scrollToEnd({ animated: true });
+									}
+								}}
+								showsVerticalScrollIndicator={false}
+							>
+								{/* Anchor */}
+								<View className="bg-blue-50/30 dark:bg-blue-900/5 px-6 py-6 border-b border-gray-100 dark:border-gray-800">
+									<Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Anchor Signal</Text>
+									<Text className="text-sm font-black dark:text-white">{comment.name}</Text>
+									<Text className="text-xs text-gray-600 dark:text-gray-400 font-bold mt-1 leading-5">{comment.text}</Text>
+								</View>
+
+								<View className="px-6 pt-6">
+									<Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-6">Live Feed</Text>
+									
+									{displayComments.map((reply, idx) => (
+										<View key={reply._id || idx} className="mb-6 border-l-2 border-gray-100 dark:border-gray-800 pl-4">
+											<Text className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">{reply.name}</Text>
+											<Text className="text-xs text-gray-600 dark:text-gray-300 font-bold mt-1 leading-5">{reply.text}</Text>
+											<Text className="text-[8px] font-bold text-gray-400 uppercase mt-2">{new Date(reply.date).toLocaleTimeString()}</Text>
+										</View>
+									))}
+									<View className="h-20" />
+								</View>
+							</ScrollView>
+						</View>
 					</RNAnimated.View>
 				</KeyboardAvoidingView>
 			</View>
@@ -253,7 +292,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postI
 };
 
 // --- Main Comment Section ---
-export default function CommentSection({ postId }) {
+export default function CommentSection({ postId, slug }) {
 	const { user } = useUser();
 	const [text, setText] = useState("");
 	const [isPosting, setIsPosting] = useState(false);
@@ -275,27 +314,30 @@ export default function CommentSection({ postId }) {
 
 	const comments = data?.comments || [];
 
-	// --- ROBUST DEEP LINKING (Cold & Warm Starts) ---
+	// --- ENHANCED WARM START LINKING ---
 	useEffect(() => {
-		const handleIncomingURL = (url) => {
-			if (!url || !url.includes("discussion=")) return;
-			const discussionId = url.split("discussion=")[1]?.split("&")[0];
-			if (!discussionId || comments.length === 0) return;
-
-			const target = comments.find(c => c._id === discussionId);
-			if (target) {
-				setActiveDiscussion(target);
+		const parseAndOpen = (url) => {
+			if (!url) return;
+			const match = url.match(/discussion=([^&]+)/);
+			if (match && match[1]) {
+				const discussionId = match[1];
+				const target = comments.find(c => c._id === discussionId);
+				if (target) {
+					setActiveDiscussion(target);
+				}
 			}
 		};
 
-		// 1. Initial Link (Cold start)
-		Linking.getInitialURL().then(handleIncomingURL);
+		// Check cold start
+		Linking.getInitialURL().then(parseAndOpen);
 
-		// 2. Link Listener (Warm start / Already open)
-		const subscription = Linking.addEventListener('url', (event) => handleIncomingURL(event.url));
+		// Check warm start (Listen while app is open)
+		const subscription = Linking.addEventListener('url', (event) => {
+			parseAndOpen(event.url);
+		});
 		
 		return () => subscription.remove();
-	}, [comments]);
+	}, [comments]); // Re-run if comments update to ensure we find the target
 
 	useEffect(() => {
 		if (activeDiscussion) {
@@ -404,7 +446,7 @@ export default function CommentSection({ postId }) {
 				onClose={() => setActiveDiscussion(null)}
 				onReply={handlePostComment}
 				isPosting={isPosting}
-				postId={postId}
+				slug={slug}
 			/>
 		</View>
 	);
