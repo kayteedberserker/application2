@@ -16,6 +16,8 @@ import PostCard from "../../../components/PostCard";
 import { SyncLoading } from "../../../components/SyncLoading";
 import { Text } from "../../../components/Text";
 const { width } = Dimensions.get('window');
+import apiFetch from "../../../utils/apiFetch"
+
 
 const API_BASE = "https://oreblogda.com/api";
 const LIMIT = 5;
@@ -50,7 +52,7 @@ export default function CategoryPage() {
 
         setLoading(true);
         try {
-            const res = await fetch(
+            const res = await apiFetch(
                 `${API_BASE}/posts?category=${categoryName}&page=${pageNum}&limit=${LIMIT}`
             );
             const data = await res.json();
