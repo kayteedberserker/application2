@@ -30,9 +30,10 @@ import AppBanner from "./AppBanner";
 import Poll from "./Poll";
 import { SyncLoading } from "./SyncLoading";
 import { Text } from "./Text";
+import apiFetch from "../utils/apiFetch"
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const fetcher = (url) => fetch(url).then((res) => res.json());
+const fetcher = (url) => apiFetch(url).then((res) => res.json());
 
 // 🔹 AURA UI UTILITY
 const getAuraVisuals = (rank) => {
@@ -216,7 +217,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
     useEffect(() => {
         const fetchAuthor = async () => {
             try {
-                const res = await fetch(`https://oreblogda.com/api/users/${post.authorUserId}`);
+                const res = await apiFetch(`https://oreblogda.com/api/users/${post.authorUserId}`);
                 if (res.ok) {
                     const data = await res.json();
                     setAuthor({
@@ -241,9 +242,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                 const stored = await AsyncStorage.getItem(viewedKey);
                 const viewed = stored ? JSON.parse(stored) : [];
                 if (viewed.includes(post._id)) return;
-                const res = await fetch(`https://oreblogda.com/api/posts/${post._id}`, {
+                const res = await apiFetch(`https://oreblogda.com/api/posts/${post._id}`, {
                     method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ action: "view", fingerprint: user.deviceId }),
                 });
                 if (res.ok) {
@@ -287,9 +287,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         try {
             setLiked(true);
             mutate({ ...postData, likes: [...(postData?.likes || []), { fingerprint }] }, false);
-            fetch(`https://oreblogda.com/api/posts/${post?._id}`, {
+            apiFetch(`https://oreblogda.com/api/posts/${post?._id}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "like", fingerprint }),
             }).catch(err => console.error("Sync error", err));
 
@@ -311,9 +310,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                 message: `Check out this post on Oreblogda: ${post?.title}\n${url}`,
                 url,
             });
-            await fetch(`https://oreblogda.com/api/posts/${post?._id}`, {
+            await apiFetch(`https://oreblogda.com/api/posts/${post?._id}`, {
                 method: "PATCH",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "share", fingerprint: user.deviceId }),
             });
             mutate();
