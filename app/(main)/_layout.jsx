@@ -20,7 +20,7 @@ import { useUser } from "../../context/UserContext";
 import "../globals.css";
 import CategoryNav from "./../../components/CategoryNav";
 import TopBar from "./../../components/Topbar";
-import apiFetch from "./../../utils/apiFetch"
+import apiFetch from "../../utils/apiFetch"
 
 export default function MainLayout() {
 	const { colorScheme, setColorScheme } = useNativeWind();
