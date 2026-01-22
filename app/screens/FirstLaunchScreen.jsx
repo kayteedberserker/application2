@@ -19,6 +19,7 @@ import { Text } from "../../components/Text";
 import THEME from "../../components/useAppTheme";
 import { useUser } from "../../context/UserContext"; 
 import { getFingerprint } from "../../utils/device";
+import apiFetch from "../../utils/apiFetch"
 
 const { width } = Dimensions.get('window');
 
@@ -108,9 +109,8 @@ export default function FirstLaunchScreen() {
         ? "https://oreblogda.com/api/mobile/recover" 
         : "https://oreblogda.com/api/mobile/register";
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             deviceId: targetId,
             username: isRecoveryMode ? undefined : cleanUsername,
