@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -15,6 +15,7 @@ import {
 	PanResponder,
 	Keyboard,
 	KeyboardAvoidingView,
+	Share
 } from "react-native";
 import Animated, {
 	Easing,
@@ -31,6 +32,23 @@ import { Text } from "./Text";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const API_URL = "https://oreblogda.com";
+
+// --- Helper: Flatten the Deep Tree for Display ---
+const flattenReplies = (nodes) => {
+	let flatList = [];
+	const traverse = (items) => {
+		if (!items) return;
+		items.forEach(item => {
+			flatList.push(item);
+			if (item.replies && item.replies.length > 0) {
+				traverse(item.replies);
+			}
+		});
+	};
+	traverse(nodes);
+	// Sort by date to create a linear timeline like WhatsApp
+	return flatList.sort((a, b) => new Date(a.date) - new Date(b.date));
+};
 
 // --- Skeleton Component ---
 const CommentSkeleton = () => {
@@ -54,8 +72,21 @@ const CommentSkeleton = () => {
 
 // --- Single Comment Component ---
 const SingleComment = ({ comment, onOpenDiscussion }) => {
-	const hasReplies = comment.replies && comment.replies.length > 0;
-	const previewReplies = (comment.replies || []).slice(0, 1);
+	// We need to count total descendants for the badge
+	const countReplies = (nodes) => {
+		let count = 0;
+		if (!nodes) return 0;
+		nodes.forEach(n => {
+			count++;
+			if (n.replies) count += countReplies(n.replies);
+		});
+		return count;
+	};
+	
+	const totalReplies = countReplies(comment.replies);
+	const hasReplies = totalReplies > 0;
+	// Preview gets the very first immediate reply
+	const previewReply = comment.replies && comment.replies.length > 0 ? comment.replies[0] : null;
 
 	return (
 		<View className="mb-6 border-l-2 border-blue-600/20 pl-4">
@@ -72,14 +103,14 @@ const SingleComment = ({ comment, onOpenDiscussion }) => {
 				>
 					<Ionicons name="chatbubbles-outline" size={12} color="#2563eb" />
 					<Text className="text-blue-600 text-[9px] font-black uppercase ml-1.5 tracking-widest">
-						{hasReplies ? `View Discussion (${comment.replies.length})` : "Start Discussion"}
+						{hasReplies ? `View Discussion (${totalReplies})` : "Start Discussion"}
 					</Text>
 				</Pressable>
 			</View>
-			{hasReplies && (
+			{hasReplies && previewReply && (
 				<View className="mt-3 opacity-50 bg-gray-50 dark:bg-white/5 p-2 rounded-lg border-l border-gray-300 dark:border-gray-700">
-					<Text className="text-[9px] font-black text-gray-500 uppercase">{previewReplies[0].name}</Text>
-					<Text className="text-[10px] text-gray-500 font-bold" numberOfLines={1}>{previewReplies[0].text}</Text>
+					<Text className="text-[9px] font-black text-gray-500 uppercase">{previewReply.name}</Text>
+					<Text className="text-[10px] text-gray-500 font-bold" numberOfLines={1}>{previewReply.text}</Text>
 				</View>
 			)}
 		</View>
@@ -87,7 +118,7 @@ const SingleComment = ({ comment, onOpenDiscussion }) => {
 };
 
 // --- Discussion Drawer Component ---
-const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => {
+const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting, postId }) => {
 	const [replyText, setReplyText] = useState("");
 	const [replyingTo, setReplyingTo] = useState(null);
 	const [showNewMessageToast, setShowNewMessageToast] = useState(false);
@@ -96,6 +127,12 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 	const messageRefs = useRef({});
 	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 	const scrollOffset = useRef(0);
+
+	// FLATTEN THE TREE for display
+	const displayComments = useMemo(() => {
+		if (!comment) return [];
+		return flattenReplies(comment.replies);
+	}, [comment]);
 
 	useEffect(() => {
 		if (visible) {
@@ -107,10 +144,10 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 	}, [visible]);
 
 	useEffect(() => {
-		if (visible && comment?.replies?.length > 0 && !shouldAutoScroll && scrollOffset.current > 100) {
+		if (visible && displayComments.length > 0 && !shouldAutoScroll && scrollOffset.current > 100) {
 			setShowNewMessageToast(true);
 		}
-	}, [comment?.replies?.length, visible]);
+	}, [displayComments.length, visible]);
 
 	const panResponder = useRef(
 		PanResponder.create({
@@ -128,6 +165,18 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 			},
 		})
 	).current;
+
+	const handleShare = async () => {
+		if (!comment) return;
+		try {
+			// Example Deep Link structure
+			await Share.share({
+				message: `Check out this discussion on OreBlogda: ${API_URL}/posts/${postId}?discussion=${comment._id}`,
+			});
+		} catch (error) {
+			console.log(error.message);
+		}
+	};
 
 	const scrollToMessage = (id) => {
 		if (id === 'anchor' || id === comment._id) {
@@ -156,8 +205,14 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 						style={{ transform: [{ translateY: panY }], height: SCREEN_HEIGHT * 0.85 }} 
 						className="bg-white dark:bg-[#0a0a0a] rounded-t-[40px] border-t-2 border-blue-600/40 overflow-hidden"
 					>
-						<View {...panResponder.panHandlers} className="items-center py-5">
-							<View className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full" />
+						{/* Header with Handle & Share */}
+						<View className="relative items-center py-5 bg-white dark:bg-[#0a0a0a] border-b border-gray-50 dark:border-gray-800">
+							<View {...panResponder.panHandlers} className="absolute top-0 w-full h-full items-center pt-5 z-10">
+								<View className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full" />
+							</View>
+							<Pressable onPress={handleShare} className="absolute right-6 top-5 z-20 bg-gray-100 dark:bg-white/10 p-2 rounded-full">
+								<Ionicons name="share-outline" size={16} color="#2563eb" />
+							</Pressable>
 						</View>
 
 						<View className="flex-1">
@@ -179,6 +234,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 								stickyHeaderIndices={[0]}
 								onContentSizeChange={() => { if (shouldAutoScroll) scrollViewRef.current?.scrollToEnd({ animated: true }); }}
 							>
+								{/* Anchor Message */}
 								<View className="bg-white dark:bg-[#0a0a0a] px-6 pb-4 border-b border-gray-100 dark:border-gray-800">
 									<Pressable onLongPress={() => {
 										Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -192,10 +248,13 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 
 								<View className="px-6 pt-6">
 									<Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-6">Response Feed</Text>
-									{comment.replies && comment.replies.map((reply, idx) => (
+									
+									{/* Render Flattened List */}
+									{displayComments.map((reply, idx) => (
 										<View key={reply._id || idx} onLayout={(event) => { messageRefs.current[reply._id] = event.nativeEvent.layout; }} className="mb-8">
 											<Pressable onLongPress={() => {
 												Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+												// IMPORTANT: When replying here, we target THIS reply ID
 												setReplyingTo({ name: reply.name, text: reply.text, id: reply._id });
 											}} className="border-l-2 border-gray-100 dark:border-gray-800 pl-4">
 												{reply.replyTo && (
@@ -222,6 +281,7 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 								</View>
 							</ScrollView>
 
+							{/* Input Area */}
 							<View className="p-5 bg-white dark:bg-[#0a0a0a] border-t border-gray-100 dark:border-gray-800">
 								{replyingTo && (
 									<View className="flex-row items-center bg-blue-50 dark:bg-blue-900/10 p-3 rounded-t-2xl border-l-4 border-blue-600 mb-[-1px] pb-4">
@@ -247,8 +307,9 @@ const DiscussionDrawer = ({ visible, comment, onClose, onReply, isPosting }) => 
 										onPress={() => {
 											if (replyText.trim() && !isPosting) {
 												Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-												// KEY CHANGE: We always send the Anchor ID as the parent to keep the array flat in DB
-												onReply(comment._id, replyText, replyingTo);
+												// We send the ID of the specific message we are replying to (Anchor OR Sub-reply)
+												const targetId = replyingTo ? replyingTo.id : comment._id;
+												onReply(targetId, replyText, replyingTo);
 												setReplyText("");
 												setReplyingTo(null);
 												setShouldAutoScroll(true);
@@ -312,8 +373,8 @@ export default function CommentSection({ postId }) {
 				body: JSON.stringify({
 					name: user?.username || "Anonymous",
 					text: content,
-					parentCommentId: parentId, // This is always the ANCHOR ID for replies
-					replyTo: replyToMeta, // This contains the specific message ID being replied to
+					parentCommentId: parentId, // Now this can be ANY message ID
+					replyTo: replyToMeta, 
 					fingerprint: user.deviceId,
 					userId: user._id || null
 				}),
@@ -326,14 +387,9 @@ export default function CommentSection({ postId }) {
 				const serverComment = responseData.comment;
 
 				if (parentId) {
-					mutate({
-						comments: comments.map(c => {
-							if (c._id === parentId) {
-								return { ...c, replies: [...(c.replies || []), serverComment] };
-							}
-							return c;
-						})
-					}, false);
+					// We need to trigger a re-fetch because deep nesting updates are hard to patch optimistically without complex logic
+					// But we can try to patch the specific anchor if we know it
+					mutate(); 
 				} else {
 					mutate({ comments: [serverComment, ...comments] }, false);
 					setText("");
@@ -411,7 +467,8 @@ export default function CommentSection({ postId }) {
 				onClose={() => setActiveDiscussion(null)}
 				onReply={handlePostComment}
 				isPosting={isPosting}
+				postId={postId}
 			/>
 		</View>
 	);
-}
+		}
