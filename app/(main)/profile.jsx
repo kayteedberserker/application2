@@ -464,7 +464,7 @@ export default function MobileProfilePage() {
                             >
                                 {showId 
                                     ? (user?.deviceId || "SEARCHING...") 
-                                    : "•••• •••• •••• ••••"} 
+                                    : "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"} 
                             </Text>
                         </View>
 
