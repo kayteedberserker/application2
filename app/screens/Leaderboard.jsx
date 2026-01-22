@@ -16,7 +16,7 @@ import Animated, {
     withSpring
 } from "react-native-reanimated";
 import useSWR from 'swr';
-import AsyncStorage from "@react-native-async-storage/async-storage"; // 👈 Added
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SyncLoading } from '../../components/SyncLoading';
 import { Text } from "../../components/Text";
 
@@ -25,20 +25,34 @@ const API_URL = "https://oreblogda.com";
 
 const fetcher = (url) => fetch(url).then((res) => res.json());
 
+// ----------------------
+// ✨ AURA UTILITY HELPER
+// ----------------------
+const getAuraTier = (rank) => {
+    if (!rank) return null;
+    switch (rank) {
+        case 1: return { color: '#fbbf24', label: 'PROTAGONIST', shadow: 'rgba(251, 191, 36, 0.4)' };
+        case 2: return { color: '#60a5fa', label: 'RIVAL', shadow: 'rgba(96, 165, 250, 0.4)' };
+        case 3: return { color: '#cd7f32', label: 'SENSEI', shadow: 'rgba(205, 127, 50, 0.4)' };
+        case 4: return { color: '#a78bfa', label: 'ELITE', shadow: 'rgba(167, 139, 250, 0.4)' };
+        case 5: return { color: '#f87171', label: 'SPECIAL', shadow: 'rgba(248, 113, 113, 0.4)' };
+        default: 
+            if (rank <= 10) return { color: '#34d399', label: 'VANGUARD', shadow: 'rgba(52, 211, 153, 0.3)' };
+            return null;
+    }
+};
+
 export default function Leaderboard() {
     const router = useRouter();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
-    const [type, setType] = useState("posts");
     
-    // 👈 New State for Offline Logic
+    const [type, setType] = useState("posts");
     const [cachedData, setCachedData] = useState(null);
     const [isOfflineMode, setIsOfflineMode] = useState(false);
 
-    // Dynamic Cache Key based on tab (Posts vs Streak)
     const CACHE_KEY = `LEADERBOARD_CACHE_${type.toUpperCase()}`;
 
-    // 1. Load Cache when tab changes
     useEffect(() => {
         const loadCache = async () => {
             try {
@@ -47,47 +61,46 @@ export default function Leaderboard() {
             } catch (e) { console.error(e); }
         };
         loadCache();
-    }, [type]); // Re-run when switching tabs
+    }, [type]);
 
-    // 2. SWR Hook with Offline Handling
     const { data: swrData, error, isLoading } = useSWR(
         `${API_URL}/api/leaderboard?type=${type}&limit=200`,
         fetcher,
         {
-            dedupingInterval: 1000 * 60 * 5, // 5 minutes in-memory cache
+            dedupingInterval: 1000 * 60 * 5,
             revalidateOnFocus: false,
-            fallbackData: cachedData, // 👈 Instant load
+            fallbackData: cachedData,
             onSuccess: (newData) => {
-                setIsOfflineMode(false); // We are online
-                AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newData)); // Save to phone
+                setIsOfflineMode(false);
+                AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newData));
             },
             onError: () => {
-                setIsOfflineMode(true); // Fetch failed, switch UI to offline
+                setIsOfflineMode(true);
             }
         }
     );
 
-    // Prioritize SWR data, fall back to Cache, then empty array
     const leaderboardData = useMemo(() => {
         return swrData?.leaderboard || cachedData?.leaderboard || [];
     }, [swrData, cachedData]);
 
-    // Animation for the sliding toggle
     const tabOffset = useSharedValue(0);
     const TOGGLE_WIDTH = width - 32;
-    const TAB_WIDTH = (TOGGLE_WIDTH - 8) / 2;
+    const TAB_WIDTH = (TOGGLE_WIDTH - 8) / 3;
 
     useEffect(() => {
-        tabOffset.value = withSpring(type === "posts" ? 0 : TAB_WIDTH, { damping: 15 });
+        let target = 0;
+        if (type === "streak") target = TAB_WIDTH;
+        if (type === "aura") target = TAB_WIDTH * 2;
+        tabOffset.value = withSpring(target, { damping: 15 });
     }, [type]);
 
     const animatedSliderStyle = useAnimatedStyle(() => ({
         transform: [{ translateX: tabOffset.value }],
-        backgroundColor: type === "posts" ? '#1e293b' : '#2d1b0d',
-        borderColor: type === "posts" ? '#60a5fa' : '#f59e0b',
+        backgroundColor: type === "posts" ? '#1e293b' : type === "streak" ? '#2d1b0d' : '#1a1a2e',
+        borderColor: type === "posts" ? '#60a5fa' : type === "streak" ? '#f59e0b' : '#a78bfa',
     }));
 
-    // Status Colors (Blue/Green for Online, Orange for Offline)
     const statusColor = isOfflineMode ? "#f59e0b" : "#60a5fa";
 
     const resolveUserRank = (totalPosts) => {
@@ -101,9 +114,10 @@ export default function Leaderboard() {
     };
 
     const renderItem = ({ item, index }) => {
-        const rank = resolveUserRank(item.postCount);
+        const writerRank = resolveUserRank(item.postCount);
+        const aura = getAuraTier(item.previousRank); 
         const isTop3 = index < 3;
-        const progress = Math.min((item.postCount / rank.next) * 100, 100);
+        const progress = Math.min((item.postCount / writerRank.next) * 100, 100);
 
         const highlightColor =
             index === 0 ? "#fbbf24" :
@@ -113,7 +127,7 @@ export default function Leaderboard() {
 
         return (
             <Animated.View
-                entering={FadeInDown.delay(index * 30).springify()} // Reduced delay for snappier feel
+                entering={FadeInDown.delay(index * 30).springify()}
                 layout={LinearTransition}
                 style={{
                     backgroundColor: isTop3 ? (isDark ? 'rgba(30, 41, 59, 0.4)' : '#f0f9ff') : 'transparent',
@@ -123,8 +137,12 @@ export default function Leaderboard() {
                     paddingHorizontal: 12,
                     borderRadius: isTop3 ? 16 : 0,
                     marginBottom: isTop3 ? 8 : 0,
-                    borderLeftWidth: isTop3 ? 4 : 0,
-                    borderLeftColor: highlightColor,
+                    borderLeftWidth: isTop3 ? 4 : (aura ? 2 : 0),
+                    borderLeftColor: isTop3 ? highlightColor : (aura ? aura.color : 'transparent'),
+                    shadowColor: aura?.color || 'transparent',
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: aura ? 0.4 : 0,
+                    shadowRadius: aura ? 10 : 0,
                 }}
             >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -142,35 +160,65 @@ export default function Leaderboard() {
                         style={{ flex: 1, paddingLeft: 10 }}
                         onPress={() => router.push({ pathname: "/author/[userId]", params: { userId: item.adminId || item.userId } })}
                     >
-                        <Text style={{ fontSize: 16, fontWeight: '800', color: isDark ? '#fff' : '#000', letterSpacing: 0.5 }}>
-                            {item.username.toUpperCase()}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ 
+                                fontSize: 16, 
+                                fontWeight: '800', 
+                                color: aura ? aura.color : (isDark ? '#fff' : '#000'), 
+                                letterSpacing: 0.5 
+                            }}>
+                                {item.username.toUpperCase()}
+                            </Text>
+                            {aura && (
+                                <View style={{ marginLeft: 6, backgroundColor: aura.color, paddingHorizontal: 4, borderRadius: 4 }}>
+                                    <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#000' }}>{aura.label}</Text>
+                                </View>
+                            )}
+                        </View>
                         
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
-                            <Text style={{ fontSize: 10, fontWeight: 'bold', color: rank.color, letterSpacing: 1 }}>
-                                {rank.icon} {rank.title}
+                            <Text style={{ fontSize: 10, fontWeight: 'bold', color: writerRank.color, letterSpacing: 1 }}>
+                                {writerRank.icon} {writerRank.title}
                             </Text>
                         </View>
 
                         <View style={{ height: 4, width: '85%', backgroundColor: isDark ? '#0f172a' : '#e2e8f0', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
                             <Animated.View
                                 entering={FadeInRight.delay(500).duration(1000)}
-                                style={{ height: '100%', width: `${progress}%`, backgroundColor: rank.color }}
+                                style={{ height: '100%', width: `${progress}%`, backgroundColor: writerRank.color }}
                             />
                         </View>
                     </TouchableOpacity>
 
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-                        <View style={{ alignItems: 'center', width: 45 }}>
-                            <Text style={{ fontSize: 10, color: '#64748b', fontWeight: 'bold', marginBottom: 2 }}>DOCS</Text>
-                            <Text style={{ fontSize: 18, fontWeight: '900', color: isDark ? '#fff' : '#000' }}>
+                    {/* Performance Section: Now includes Aura globally */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {/* 1. Posts */}
+                        <View style={{ alignItems: 'center', width: 32 }}>
+                            <Text style={{ fontSize: 8, color: '#64748b', fontWeight: 'bold' }}>DOCS</Text>
+                            <Text style={{ fontSize: 14, fontWeight: '900', color: isDark ? '#fff' : '#000' }}>
                                 {item.postCount}
                             </Text>
                         </View>
-                        <View style={{ alignItems: 'center', width: 45 }}>
-                            <Ionicons name="flame" size={14} color="#f59e0b" style={{ marginBottom: 2 }} />
-                            <Text style={{ fontSize: 18, fontWeight: '900', color: '#f59e0b' }}>
+
+                        {/* 2. Streak */}
+                        <View style={{ alignItems: 'center', width: 32 }}>
+                            <Ionicons name="flame" size={10} color="#f59e0b" />
+                            <Text style={{ fontSize: 14, fontWeight: '900', color: '#f59e0b' }}>
                                 {item.streak}
+                            </Text>
+                        </View>
+
+                        {/* 3. Aura (Always visible, highlighted if tab is Aura) */}
+                        <View style={{ 
+                            alignItems: 'center', 
+                            width: 38, 
+                            backgroundColor: type === 'aura' ? (isDark ? '#1a1a2e' : '#f5f3ff') : 'transparent',
+                            borderRadius: 6,
+                            paddingVertical: 2
+                        }}>
+                            <Text style={{ fontSize: 8, color: '#a78bfa', fontWeight: 'bold' }}>AURA</Text>
+                            <Text style={{ fontSize: 14, fontWeight: '900', color: '#a78bfa' }}>
+                                {item.weeklyAura || 0}
                             </Text>
                         </View>
                     </View>
@@ -181,7 +229,7 @@ export default function Leaderboard() {
 
     return (
         <View style={{ flex: 1, backgroundColor: isDark ? "#000" : "#fff", paddingHorizontal: 16, paddingTop: 60 }}>
-            {/* Header with Offline Indication */}
+            {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 25 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity
@@ -192,9 +240,7 @@ export default function Leaderboard() {
                     </TouchableOpacity>
                     <View style={{ marginLeft: 15 }}>
                         <Text style={{ fontSize: 24, fontWeight: '900', color: isDark ? '#fff' : '#000' }}>COMMAND_CENTER</Text>
-                        
                         <View className="flex-row items-center gap-2">
-                             {/* Status Dot */}
                             <View style={{ width: 6, height: 6, borderRadius: 4, backgroundColor: statusColor }} />
                             <Text style={{ fontSize: 9, color: statusColor, fontWeight: 'bold', letterSpacing: 2 }}>
                                 {isOfflineMode ? "OFFLINE_MODE // ARCHIVED_RANK" : "LIVE_OPERATIONS // GLOBAL_RANK"}
@@ -204,7 +250,7 @@ export default function Leaderboard() {
                 </View>
             </View>
 
-            {/* Toggle Switch */}
+            {/* Three-Way Toggle Switch */}
             <View style={{ 
                 backgroundColor: isDark ? '#0a0a0a' : '#f1f5f9', 
                 borderRadius: 16, 
@@ -225,7 +271,7 @@ export default function Leaderboard() {
                         borderRadius: 12,
                         left: 4,
                         borderWidth: 1,
-                        shadowColor: type === "posts" ? '#60a5fa' : '#f59e0b',
+                        shadowColor: type === "posts" ? '#60a5fa' : type === "streak" ? '#f59e0b' : '#a78bfa',
                         shadowOffset: { width: 0, height: 0 },
                         shadowOpacity: 0.3,
                         shadowRadius: 10,
@@ -233,53 +279,33 @@ export default function Leaderboard() {
                 ]} />
 
                 <View style={{ flexDirection: 'row', zIndex: 1 }}>
-                    <TouchableOpacity
-                        onPress={() => setType("posts")}
-                        style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
-                    >
-                        <Ionicons name="document-text" size={12} color={type === "posts" ? "#60a5fa" : "#64748b"} />
-                        <Text style={{ 
-                            fontWeight: '900', 
-                            fontSize: 10, 
-                            color: type === "posts" ? '#fff' : '#64748b',
-                            letterSpacing: 1
-                        }}>SORT_BY_POSTS</Text>
+                    <TouchableOpacity onPress={() => setType("posts")} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontWeight: '900', fontSize: 9, color: type === "posts" ? '#fff' : '#64748b' }}>POSTS</Text>
                     </TouchableOpacity>
                     
-                    <TouchableOpacity
-                        onPress={() => setType("streak")}
-                        style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
-                    >
-                        <Ionicons name="flame" size={12} color={type === "streak" ? "#f59e0b" : "#64748b"} />
-                        <Text style={{ 
-                            fontWeight: '900', 
-                            fontSize: 10, 
-                            color: type === "streak" ? '#fff' : '#64748b',
-                            letterSpacing: 1
-                        }}>SORT_BY_STREAK</Text>
+                    <TouchableOpacity onPress={() => setType("streak")} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontWeight: '900', fontSize: 9, color: type === "streak" ? '#fff' : '#64748b' }}>STREAK</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => setType("aura")} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontWeight: '900', fontSize: 9, color: type === "aura" ? '#fff' : '#64748b' }}>AURA</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-            <View style={{ 
-                flexDirection: 'row', 
-                paddingHorizontal: 12, 
-                paddingVertical: 12, 
-                borderBottomWidth: 1,
-                borderBottomColor: isDark ? '#1e293b' : '#e2e8f0'
-            }}>
+            {/* List Header */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: isDark ? '#1e293b' : '#e2e8f0' }}>
                 <Text style={{ width: 35, fontSize: 10, fontWeight: 'bold', color: '#475569' }}>POS</Text>
                 <Text style={{ flex: 1, fontSize: 10, fontWeight: 'bold', color: '#475569', paddingLeft: 10 }}>OPERATIVE_NAME</Text>
-                <Text style={{ width: 105, fontSize: 10, fontWeight: 'bold', color: '#475569', textAlign: 'center' }}>PERFORMANCE</Text>
+                <Text style={{ width: 110, fontSize: 10, fontWeight: 'bold', color: '#475569', textAlign: 'center' }}>PERFORMANCE</Text>
             </View>
 
-            {/* Content Logic */}
+            {/* Content */}
             {(isLoading && leaderboardData.length === 0) ? (
                 <View className="mt-[50%]">
                     <SyncLoading message='Scanning Core' />
                 </View>
             ) : leaderboardData.length === 0 ? (
-                 // Empty State (Cache empty + Offline)
                 <View style={{ alignItems: 'center', marginTop: 100 }}>
                     <MaterialCommunityIcons name="cloud-off-outline" size={40} color="#64748b" />
                     <Text style={{ color: '#64748b', fontWeight: '900', marginTop: 10, letterSpacing: 1 }}>NO DATA AVAILABLE</Text>
