@@ -296,7 +296,7 @@ export default function CommentSection({ postId, slug }) {
 	// Fetch page 1 + Auto Refresh
 	const { data, mutate, isLoading } = useSWR(
 		user?.deviceId ? `${API_URL}/api/posts/${postId}/comment?page=1&limit=40` : null,
-		(url) => fetch(url).then(res => res.json()),
+		(url) => apiFetch(url).then(res => res.json()),
 		{ refreshInterval: 5000 }
 	);
 
