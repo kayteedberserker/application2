@@ -388,6 +388,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
     }, [post.message, isFeed, isDark, similarPosts]);
 
    const renderMediaContent = () => {
+    const videoRef = useRef(null); // Ref for direct native fullscreen control
+
     if (!post?.mediaUrl) return null;
     const lowerUrl = post.mediaUrl.toLowerCase();
     const isYouTube = lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be");
@@ -417,6 +419,9 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         shadowRadius: 10 
     };
 
+    /* =====================================================
+       1. YOUTUBE (Native Fullscreen via WebView)
+    ===================================================== */
     if (isYouTube) {
         const getYouTubeID = (url) => {
             const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
@@ -431,12 +436,16 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                     play={false} 
                     videoId={getYouTubeID(post.mediaUrl)} 
                     onReady={() => setVideoReady(true)} 
+                    // This allows the YouTube player's own fullscreen button to work
                     webViewProps={{ allowsInlineMediaPlayback: true, androidLayerType: "hardware" }}
                 />
             </View>
         );
     }
 
+    /* =====================================================
+       2. TIKTOK (Embed with WebView)
+    ===================================================== */
     if (isTikTok) {
         const getTikTokEmbedUrl = (url) => {
             const match = url.match(/\/video\/(\d+)/);
@@ -460,9 +469,11 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         );
     }
 
+    /* =====================================================
+       3. DIRECT VIDEO / IMAGE (Fixed native fullscreen)
+    ===================================================== */
     return (
-        <Pressable 
-            onPress={() => setLightbox({ open: true, src: post.mediaUrl, type: isDirectVideo ? "video" : "image" })} 
+        <View 
             className="my-2 rounded-2xl overflow-hidden shadow-sm" 
             style={[similarPosts ? { height: 200 } : null, glassStyle]}
         >
@@ -471,22 +482,29 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
             
             {isDirectVideo ? (
                 <Video 
+                    ref={videoRef}
                     source={{ uri: post.mediaUrl }} 
                     style={{ width: "100%", height: videoReady ? 250 : 0 }} 
-                    useNativeControls 
-                    resizeMode="cover" 
-                    isMuted={true}
+                    useNativeControls // Native controls include the Enlarge button
+                    resizeMode="contain" 
+                    isMuted={false}
                     onLoad={() => setVideoReady(true)}
+                    // Allows the built-in fullscreen player to take over orientation
+                    onFullscreenUpdate={(event) => {
+                        console.log("Fullscreen state:", event.fullscreenUpdate);
+                    }}
                 />
             ) : (
-                <Image 
-                    source={{ uri: post.mediaUrl }} 
-                    style={{ width: "100%", height: imageReady ? 300 : 0 }} 
-                    resizeMode="cover" 
-                    onLoad={() => setImageReady(true)}
-                />
+                <Pressable onPress={() => setLightbox({ open: true, src: post.mediaUrl, type: "image" })}>
+                    <Image 
+                        source={{ uri: post.mediaUrl }} 
+                        style={{ width: "100%", height: imageReady ? 300 : 0 }} 
+                        resizeMode="cover" 
+                        onLoad={() => setImageReady(true)}
+                    />
+                </Pressable>
             )}
-        </Pressable>
+        </View>
     );
 };
 
