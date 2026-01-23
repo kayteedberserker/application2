@@ -27,7 +27,7 @@ SplashScreen.preventAutoHideAsync();
 // 🔹 AD CONFIGURATION
 const FIRST_AD_DELAY_MS = 30000; 
 const COOLDOWN_MS = 180000;      
-const ADMIN_DEVICE_ID = "4bfe2b53-7591-462f-927e-68eedd7a6447"; 
+const ADMIN_DEVICE_ID = "4bfe2b53-75917"; 
 const ADMIN_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3'; // Futuristic Ping
 
 const INTERSTITIAL_ID = __DEV__ ? TestIds.INTERSTITIAL : AdConfig.interstitial;
