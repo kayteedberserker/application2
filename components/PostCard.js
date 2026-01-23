@@ -555,49 +555,32 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                 )}
             </View>
 
-            <Modal 
-    visible={lightbox.open} 
-    transparent 
-    animationType="fade"
-    supportedOrientations={['portrait', 'landscape']} // Allows the modal to rotate
->
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
-        {/* Close Button - Hidden during landscape for better immersion */}
-        <Pressable 
-            onPress={closeLightbox} 
-            className="absolute top-14 right-6 p-3 bg-white/10 rounded-full z-[100]"
-        >
-            <Feather name="x" size={24} color="white" />
-        </Pressable>
-
-        <View className="flex-1 justify-center items-center">
-            {lightbox.type === "image" ? (
-                <GestureDetector gesture={composed}>
-                    <Animated.Image
-                        source={{ uri: lightbox.src }}
-                        style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8 }, animatedStyle]}
-                        resizeMode="contain"
-                    />
-                </GestureDetector>
-            ) : (
-                <Video
-                    source={{ uri: lightbox.src }}
-                    className="w-full h-full" // Use full height to allow rotation scaling
-                    useNativeControls
-                    resizeMode="contain"
-                    shouldPlay
-                    allowsExternalPlayback
-                    // This is key for the 2026 expo-av/native video experience
-                    onFullscreenUpdate={({fullscreenUpdate}) => {
-                        if (fullscreenUpdate === Video.FULLSCREEN_UPDATE_PLAYER_DID_DISMISS) {
-                            closeLightbox();
-                        }
-                    }}
-                />
-            )}
-        </View>
-    </GestureHandlerRootView>
-</Modal>
+            <Modal visible={lightbox.open} transparent animationType="fade">
+                <GestureHandlerRootView style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
+                    <Pressable onPress={closeLightbox} className="absolute top-14 right-6 p-3 bg-white/10 rounded-full z-[100]">
+                        <Feather name="x" size={24} color="white" />
+                    </Pressable>
+                    <View className="flex-1 justify-center items-center">
+                        {lightbox.type === "image" ? (
+                            <GestureDetector gesture={composed}>
+                                <Animated.Image
+                                    source={{ uri: lightbox.src }}
+                                    style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8 }, animatedStyle]}
+                                    resizeMode="contain"
+                                />
+                            </GestureDetector>
+                        ) : (
+                            <Video
+                                source={{ uri: lightbox.src }}
+                                className="w-full h-[80%]"
+                                useNativeControls
+                                resizeMode="contain"
+                                shouldPlay
+                            />
+                        )}
+                    </View>
+                </GestureHandlerRootView>
+            </Modal>
         </View>
     );
 }
