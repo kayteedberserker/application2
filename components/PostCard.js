@@ -37,12 +37,32 @@ const fetcher = (url) => apiFetch(url).then((res) => res.json());
 
 // 🔹 AURA UI UTILITY
 const getAuraVisuals = (rank) => {
+    // If rank is missing or outside our Top 10 Elite window, return null or default
     if (!rank || rank > 10 || rank <= 0) return null;
+
     switch (rank) {
-        case 1: return { color: '#fbbf24', label: 'SUPREME', icon: 'crown' };
-        case 2: return { color: '#60a5fa', label: 'ELITE', icon: 'flash' };
-        case 3: return { color: '#f97316', label: 'MASTER', icon: 'ribbon' };
-        default: return { color: '#a78bfa', label: 'VANGUARD', icon: 'shield-check' };
+        case 1: 
+            return { color: '#fbbf24', label: 'MONARCH', icon: 'crown' }; // Gold
+        case 2: 
+            return { color: '#ef4444', label: 'YONKO', icon: 'flare' }; // Crimson Red
+        case 3: 
+            return { color: '#a855f7', label: 'KAGE', icon: 'moon' }; // Shadow Purple
+        case 4: 
+            return { color: '#3b82f6', label: 'SHOGUN', icon: 'shield-star' }; // Steel Blue
+        case 5: 
+            return { color: '#ffffff', label: 'ESPADA 0', icon: 'skull' }; // Hollow White
+        case 6: 
+            return { color: '#e5e7eb', label: 'ESPADA 1', icon: 'sword-cross' };
+        case 7: 
+            return { color: '#e5e7eb', label: 'ESPADA 2', icon: 'sword-cross' };
+        case 8: 
+            return { color: '#e5e7eb', label: 'ESPADA 3', icon: 'sword-cross' };
+        case 9: 
+            return { color: '#e5e7eb', label: 'ESPADA 4', icon: 'sword-cross' };
+        case 10: 
+            return { color: '#e5e7eb', label: 'ESPADA 5', icon: 'sword-cross' };
+        default: 
+            return { color: '#94a3b8', label: 'OPERATIVE', icon: 'target' };
     }
 };
 
