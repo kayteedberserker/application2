@@ -149,9 +149,6 @@ const PostSearchCard = ({ item, isDark }) => {
                                 <Text className="text-[11px] font-black text-zinc-500 ml-1.5">{item.commentsCount || 0}</Text>
                             </View>
                         </View>
-                        <TouchableOpacity className={`${isDark ? 'bg-zinc-800' : 'bg-zinc-100'} p-2 rounded-full`}>
-                            <Ionicons name="share-social" size={14} color={isDark ? "white" : "black"} />
-                        </TouchableOpacity>
                     </View>
                 </View>
             </TouchableOpacity>
@@ -186,7 +183,7 @@ const SearchScreen = () => {
     };
 
     const saveSearch = async (text) => {
-        if (!text || text.length < 2) return;
+        f (!text || text.length < 2) return;
         const updated = [text, ...recentSearches.filter(s => s !== text)].slice(0, 5);
         setRecentSearches(updated);
         await AsyncStorage.setItem('recent_searches', JSON.stringify(updated));
