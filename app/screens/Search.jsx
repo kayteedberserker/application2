@@ -19,44 +19,44 @@ import { Text } from "../../components/Text";
 import Animated, { FadeInDown, FadeIn, Layout } from "react-native-reanimated";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// --- HELPER: RESOLVE WRITER RANK ---
+const resolveUserRank = (totalPosts) => {
+    const count = totalPosts || 0;
+    if (count >= 200) return { title: "MASTER_WRITER", icon: "👑", color: "#fbbf24", next: 500 };
+    if (count > 150) return { title: "ELITE_WRITER", icon: "💎", color: "#60a5fa", next: 200 };
+    if (count > 100) return { title: "SENIOR_WRITER", icon: "🔥", color: "#f87171", next: 150 };
+    if (count > 50) return { title: "NOVICE_WRITER", icon: "⚔️", color: "#a78bfa", next: 100 };
+    if (count > 25) return { title: "RESEACHER_SR", icon: "📜", color: "#34d399", next: 50 };
+    return { title: "RESEACHER_JR", icon: "🛡️", color: "#94a3b8", next: 25 };
+};
+
 // --- AUTHOR CARD COMPONENT ---
 const AuthorCard = ({ author, isDark }) => {
     const router = useRouter();
     
+    // Aura Logic (Top 10 Leaderboard)
     const getAuraTier = (rank) => {
-        // FIXED: Instead of returning null, we return a default "OPERATIVE" state
-        // This prevents the app from crashing when trying to read tier.color
         if (!rank || rank > 10 || rank <= 0) {
             return { color: '#94a3b8', label: 'OPERATIVE' };
         }
 
         switch (rank) {
-            case 1: 
-                return { color: '#fbbf24', label: 'MONARCH' }; // Gold
-            case 2: 
-                return { color: '#ef4444', label: 'YONKO' };   // Crimson Red
-            case 3: 
-                return { color: '#a855f7', label: 'KAGE' };    // Shadow Purple
-            case 4: 
-                return { color: '#3b82f6', label: 'SHOGUN' };  // Steel Blue
-            case 5: 
-                return { color: '#ffffff', label: 'ESPADA 0' }; // Hollow White
-            case 6: 
-                return { color: '#e5e7eb', label: 'ESPADA 1' };
-            case 7: 
-                return { color: '#e5e7eb', label: 'ESPADA 2' };
-            case 8: 
-                return { color: '#e5e7eb', label: 'ESPADA 3' };
-            case 9: 
-                return { color: '#e5e7eb', label: 'ESPADA 4' };
-            case 10: 
-                return { color: '#e5e7eb', label: 'ESPADA 5' };
-            default: 
-                return { color: '#94a3b8', label: 'OPERATIVE' };
+            case 1: return { color: '#fbbf24', label: 'MONARCH' }; 
+            case 2: return { color: '#ef4444', label: 'YONKO' };   
+            case 3: return { color: '#a855f7', label: 'KAGE' };    
+            case 4: return { color: '#3b82f6', label: 'SHOGUN' };  
+            case 5: return { color: '#ffffff', label: 'ESPADA 0' }; 
+            case 6: return { color: '#e5e7eb', label: 'ESPADA 1' };
+            case 7: return { color: '#e5e7eb', label: 'ESPADA 2' };
+            case 8: return { color: '#e5e7eb', label: 'ESPADA 3' };
+            case 9: return { color: '#e5e7eb', label: 'ESPADA 4' };
+            case 10: return { color: '#e5e7eb', label: 'ESPADA 5' };
+            default: return { color: '#94a3b8', label: 'OPERATIVE' };
         }
     };
 
     const tier = getAuraTier(author.previousRank);
+    const writerRank = resolveUserRank(author.postsCount);
 
     return (
         <Animated.View entering={FadeInDown.duration(400)} layout={Layout.springify()}>
@@ -67,6 +67,7 @@ const AuthorCard = ({ author, isDark }) => {
                 }`}
             >
                 <View className="flex-row items-center">
+                    {/* Profile Pic with Tier Border */}
                     <View style={{ borderColor: tier.color }} className="w-16 h-16 rounded-full border-2 p-0.5 shadow-sm">
                         <Image
                             source={{ uri: author.profilePic?.url || "https://oreblogda.com/default-avatar.png" }}
@@ -79,12 +80,20 @@ const AuthorCard = ({ author, isDark }) => {
                             <Text numberOfLines={1} className={`font-black italic uppercase tracking-tighter text-lg flex-1 mr-2 ${isDark ? 'text-white' : 'text-black'}`}>
                                 {author.username}
                             </Text>
+                            {/* Aura Tier Badge */}
                             <View style={{ backgroundColor: `${tier.color}15`, borderColor: `${tier.color}40` }} className="px-2 py-0.5 rounded-md border">
                                 <Text style={{ color: tier.color }} className="text-[8px] font-black uppercase tracking-widest">{tier.label}</Text>
                             </View>
                         </View>
 
-                        {/* Flexible Description Space */}
+                        {/* Writer Rank Label */}
+                        <View className="flex-row items-center mb-2">
+                            <Text className="text-[10px] font-black italic" style={{ color: writerRank.color }}>
+                                {writerRank.icon} {writerRank.title}
+                            </Text>
+                        </View>
+
+                        {/* Bio / Description */}
                         <Text numberOfLines={1} className="text-zinc-500 text-[11px] font-medium italic mb-2">
                             {author.description || "No bio decrypted yet..."}
                         </Text>
@@ -93,7 +102,7 @@ const AuthorCard = ({ author, isDark }) => {
                             <View className="flex-row items-center gap-3">
                                 <View className="flex-row items-center">
                                     <Ionicons name="flame" size={12} color="#f97316" />
-                                    <Text className="text-[10px] font-bold ml-1 text-zinc-400">{author.consecutiveStreak || 0}</Text>
+                                    <Text className="text-[10px] font-bold ml-1 text-zinc-400">{author.lastStreak || 0}</Text>
                                 </View>
                                 <View className="flex-row items-center">
                                     <Ionicons name="document-text" size={12} color="#3b82f6" />
@@ -251,6 +260,7 @@ const SearchScreen = () => {
             
             <View style={{ height: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }} />
 
+            {/* Header / Search Bar */}
             <View className="px-4 py-3 flex-row items-center">
                 <TouchableOpacity onPress={() => router.back()} className="pr-3">
                     <Ionicons name="chevron-back" size={32} color={isDark ? "white" : "black"} />
@@ -273,6 +283,7 @@ const SearchScreen = () => {
                 </View>
             </View>
 
+            {/* Content Logic */}
             {query.length < 2 ? (
                 <ScrollView className="flex-1 px-6">
                     <View className="mt-8">
