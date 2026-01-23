@@ -183,7 +183,7 @@ const SearchScreen = () => {
     };
 
     const saveSearch = async (text) => {
-        f (!text || text.length < 2) return;
+        if (!text || text.length < 2) return;
         const updated = [text, ...recentSearches.filter(s => s !== text)].slice(0, 5);
         setRecentSearches(updated);
         await AsyncStorage.setItem('recent_searches', JSON.stringify(updated));
