@@ -154,6 +154,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
     const translateY = useSharedValue(0);
     const savedTranslateX = useSharedValue(0);
     const savedTranslateY = useSharedValue(0);
+    const containerWidth = useSharedValue(SCREEN_WIDTH);
+const containerHeight = useSharedValue(SCREEN_HEIGHT * 0.8);
 
     // 🔹 Helper to reset zoom
     const resetZoom = () => {
@@ -193,52 +195,69 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
 
     // 🔹 IMPROVED GESTURES
     const pinchGesture = Gesture.Pinch()
-        .onUpdate((event) => {
-            scale.value = savedScale.value * event.scale;
-        })
-        .onEnd(() => {
-            if (scale.value < 1) {
-                resetZoom();
-            } else {
-                savedScale.value = scale.value;
-            }
-        });
+  .onUpdate((event) => {
+    const nextScale = savedScale.value * event.scale;
+
+    const focalX = event.focalX - containerWidth.value / 2;
+    const focalY = event.focalY - containerHeight.value / 2;
+
+    translateX.value =
+      savedTranslateX.value + focalX * (nextScale / savedScale.value - 1);
+    translateY.value =
+      savedTranslateY.value + focalY * (nextScale / savedScale.value - 1);
+
+    scale.value = nextScale;
+  })
+  .onEnd(() => {
+    if (scale.value < 1) {
+      resetZoom();
+    } else {
+      savedScale.value = scale.value;
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    }
+  });
 
     const panGesture = Gesture.Pan()
-        .onUpdate((event) => {
-            if (scale.value > 1) {
-                // Pan normally if zoomed in
-                translateX.value = savedTranslateX.value + event.translationX;
-                translateY.value = savedTranslateY.value + event.translationY;
-            } else {
-                // Only allow vertical movement for swipe-to-close if not zoomed
-                translateY.value = event.translationY;
-            }
-        })
-        .onEnd((event) => {
-            if (scale.value > 1) {
-                savedTranslateX.value = translateX.value;
-                savedTranslateY.value = translateY.value;
-            } else {
-                // Swipe down to close logic
-                if (Math.abs(event.translationY) > 100) {
-                    runOnJS(closeLightbox)();
-                } else {
-                    translateY.value = withSpring(0); // Snap back if drag wasn't enough
-                }
-            }
-        });
+  .onUpdate((event) => {
+    if (scale.value > 1) {
+      translateX.value = savedTranslateX.value + event.translationX;
+      translateY.value = savedTranslateY.value + event.translationY;
+    } else {
+      translateY.value = event.translationY;
+    }
+  })
+  .onEnd((event) => {
+    if (scale.value > 1) {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    } else {
+      if (event.translationY > 120) {
+        runOnJS(closeLightbox)();
+      } else {
+        translateY.value = withSpring(0);
+      }
+    }
+  });
 
     const doubleTapGesture = Gesture.Tap()
-        .numberOfTaps(2)
-        .onEnd(() => {
-            if (scale.value > 1.5) {
-                resetZoom();
-            } else {
-                scale.value = withTiming(2);
-                savedScale.value = 2;
-            }
-        });
+  .numberOfTaps(2)
+  .onEnd((event) => {
+    if (scale.value > 1.5) {
+      resetZoom();
+    } else {
+      const tapX = event.x - containerWidth.value / 2;
+      const tapY = event.y - containerHeight.value / 2;
+
+      translateX.value = tapX * -1;
+      translateY.value = tapY * -1;
+
+      scale.value = withTiming(2);
+      savedScale.value = 2;
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    }
+  });
 
     const composed = Gesture.Exclusive(doubleTapGesture, Gesture.Simultaneous(pinchGesture, panGesture));
 
@@ -458,7 +477,7 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                         style={{ width: "100%", height: videoReady ? 250 : 0 }} 
                         useNativeControls 
                         resizeMode="cover" 
-                        isMuted={true}
+                        isMuted={false}
                         onLoad={() => setVideoReady(true)}
                         // 🔹 This allows the native player to handle Fullscreen/Rotation
                         onFullscreenUpdate={(event) => {
@@ -629,10 +648,20 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                     <View className="flex-1 justify-center items-center">
                         <GestureDetector gesture={composed}>
                             <Animated.Image
-                                source={{ uri: lightbox.src }}
-                                style={[{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8 }, animatedStyle]}
-                                resizeMode="contain"
-                            />
+  source={{ uri: lightbox.src }}
+  resizeMode="contain"
+  onLayout={(e) => {
+    containerWidth.value = e.nativeEvent.layout.width;
+    containerHeight.value = e.nativeEvent.layout.height;
+  }}
+  style={[
+    {
+      width: SCREEN_WIDTH,
+      height: SCREEN_HEIGHT * 0.8,
+    },
+    animatedStyle,
+  ]}
+/>
                         </GestureDetector>
                         <Text className="text-white/50 text-xs absolute bottom-10">
                             Swipe down to close • Double tap to zoom
