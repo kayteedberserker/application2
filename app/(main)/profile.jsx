@@ -171,7 +171,7 @@ export default function MobileProfilePage() {
                     setDescription(dbUser.description || "");
                     setUsername(dbUser.username || "");
 
-                    const postRes = await fetch(`${API_BASE}/posts?author=${dbUser._id}&limit=1`);
+                    const postRes = await apiFetch(`${API_BASE}/posts?author=${dbUser._id}&limit=1`);
                     const postData = await postRes.json();
                     const newTotal = postData.total || 0;
                     if (postRes.ok) {
