@@ -36,17 +36,52 @@ const LIMIT = 5;
 
 const fetcher = (url) => apiFetch(url).then((res) => res.json());
 
-// 🔹 AURA UI UTILITY (Using the Purple Leaderboard Theme)
+// 🔹 AURA UI UTILITY (Using the Multi-Color Legend Theme)
 const AURA_PURPLE = "#a78bfa";
 
 const getAuraVisuals = (rank) => {
-    // Keeping descriptions but unifying the theme to Purple
-    return { 
+    const AURA_PURPLE = '#a78bfa'; 
+    const MONARCH_GOLD = '#fbbf24'; 
+    const YONKO_BLUE = '#60a5fa';   
+
+    let visualConfig = { 
         color: AURA_PURPLE, 
-        label: 'AURA', 
-        icon: 'shield-check', 
+        label: 'AURA OPERATIVE', 
+        icon: 'target', 
         description: 'Your standing in the global hierarchy. Increase your points by engaging and posting logs.' 
     };
+
+    if (!rank || rank <= 0) return visualConfig;
+
+    if (rank === 1) {
+        visualConfig.color = MONARCH_GOLD;
+        visualConfig.label = 'MONARCH';
+        visualConfig.icon = 'crown';
+        visualConfig.description = 'The absolute peak of the hierarchy. You command the shadows of the network.';
+    } else if (rank === 2) {
+        visualConfig.color = YONKO_BLUE;
+        visualConfig.label = 'YONKO';
+        visualConfig.icon = 'flare';
+        visualConfig.description = 'An Emperor of the New World. Your influence is felt across all sectors.';
+    } else if (rank === 3) {
+        visualConfig.label = 'KAGE';
+        visualConfig.icon = 'moon';
+        visualConfig.description = 'The Shadow Leader. Tactical mastery has earned you this seat.';
+    } else if (rank === 4) {
+        visualConfig.label = 'SHOGUN';
+        visualConfig.icon = 'shield-star';
+        visualConfig.description = 'Supreme Commander. You lead the elite guard with iron resolve.';
+    } else if (rank === 5) {
+        visualConfig.label = 'ESPADA 0';
+        visualConfig.icon = 'skull';
+        visualConfig.description = 'The Secret Elite. You have surpassed the limits of the numbered guard.';
+    } else if (rank >= 6 && rank <= 10) {
+        visualConfig.label = `ESPADA ${rank - 4}`;
+        visualConfig.icon = 'sword-cross';
+        visualConfig.description = 'One of the ten elite warriors. Continue your ascent to reach the Top 5.';
+    }
+
+    return visualConfig;
 };
 
 export default function MobileProfilePage() {
@@ -56,7 +91,6 @@ export default function MobileProfilePage() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    // 🔹 CACHED DATA STATES
     const [description, setDescription] = useState("");
     const [username, setUsername] = useState("");
     const [totalPosts, setTotalPosts] = useState(0); 
@@ -66,24 +100,21 @@ export default function MobileProfilePage() {
     const [imageFile, setImageFile] = useState(null);
     const [isUpdating, setIsUpdating] = useState(false);
 
-    // 🔹 MODAL STATES
     const [rankModalVisible, setRankModalVisible] = useState(false);
     const [auraModalVisible, setAuraModalVisible] = useState(false);
 
-    // Animations
     const scanAnim = useRef(new Animated.Value(0)).current;
     const loadingAnim = useRef(new Animated.Value(0)).current;
     const pulseAnim = useRef(new Animated.Value(1)).current; 
     const [copied, setCopied] = useState(false);
 
-    // Cache Keys
     const CACHE_KEY_USER_EXTRAS = `user_profile_cache_${user?.deviceId}`;
 
-    // 🔹 SIMPLE AURA LOGIC
+    // 🔹 AURA LOGIC (Dynamic Color Selection)
     const currentAuraPoints = user?.weeklyAura || 0; 
     const aura = useMemo(() => getAuraVisuals(user?.previousRank), [user?.previousRank]);
+    const dynamicAuraColor = aura.color; // Use this for UI elements
     
-    // 1 box filled for every 10 points, max 10 boxes.
     const filledBoxes = Math.min(Math.floor(currentAuraPoints / 10), 10);
 
     const copyToClipboard = async () => {
@@ -138,7 +169,6 @@ export default function MobileProfilePage() {
         outputRange: [-width, width],
     });
 
-    // 🔹 1. INITIAL CACHE RESTORATION
     useEffect(() => {
         const loadProfileCache = async () => {
             if (!user?.deviceId) return;
@@ -159,7 +189,6 @@ export default function MobileProfilePage() {
         loadProfileCache();
     }, [user?.deviceId]);
 
-    // 🔹 2. SYNC WITH DB (SILENT UPDATE)
     useEffect(() => {
         const syncUserWithDB = async () => {
             if (!user?.deviceId) return;
@@ -191,7 +220,6 @@ export default function MobileProfilePage() {
         syncUserWithDB();
     }, [user?.deviceId]);
 
-    // 🔹 3. SWR Infinite
     const getKey = (pageIndex, previousPageData) => {
         if (!user?._id) return null;
         if (previousPageData && previousPageData.posts.length < LIMIT) return null;
@@ -212,7 +240,6 @@ export default function MobileProfilePage() {
     const isReachingEnd = data && data[data.length - 1]?.posts.length < LIMIT;
     const isFetchingNextPage = isValidating && data && typeof data[size - 1] === "undefined";
 
-    // 🔹 Ranking Logic
     const count = totalPosts;
     const rankTitle = count > 200 ? "Master_Writer" : count > 150 ? "Elite_Writer" : count > 100 ? "Senior_Writer" : count > 50 ? "Novice_Writer" : count > 25 ? "Senior_Researcher" : "Novice_Researcher";
     const rankIcon = count > 200 ? "👑" : count > 150 ? "💎" : count > 100 ? "🔥" : count > 50 ? "⚔️" : count > 25 ? "📜" : "🛡️";
@@ -342,19 +369,19 @@ export default function MobileProfilePage() {
     const listHeader = useMemo(() => (
         <View className="px-6">
             <View className="flex-row items-center gap-4 mb-10 border-b border-gray-100 dark:border-gray-800 pb-6">
-                <View className="w-2 h-8" style={{ backgroundColor: AURA_PURPLE }} />
+                <View className="w-2 h-8" style={{ backgroundColor: dynamicAuraColor }} />
                 <Text className="text-3xl font-black italic tracking-tighter uppercase dark:text-white">Player Profile</Text>
             </View>
 
             <View className="items-center mb-10">
                 <View className="relative">
-                    {/* 🔹 Aura Pulse Glow (Purple) */}
+                    {/* 🔹 Dynamic Aura Pulse Glow */}
                     <Animated.View 
                         style={{ 
                             position: 'absolute', 
                             inset: -12, 
                             borderRadius: 100, 
-                            backgroundColor: AURA_PURPLE, 
+                            backgroundColor: dynamicAuraColor, 
                             opacity: 0.15,
                             transform: [{ scale: pulseAnim }]
                         }} 
@@ -362,12 +389,12 @@ export default function MobileProfilePage() {
                     <Animated.View
                         style={{ 
                             transform: [{ rotate: spin }],
-                            borderColor: `${AURA_PURPLE}40` 
+                            borderColor: `${dynamicAuraColor}40` 
                         }}
                         className="absolute -inset-4 border border-dashed rounded-full"
                     />
                     <View 
-                        style={{ borderColor: AURA_PURPLE }}
+                        style={{ borderColor: dynamicAuraColor }}
                         className="absolute -inset-1 border-2 rounded-full opacity-50" 
                     />
 
@@ -393,12 +420,12 @@ export default function MobileProfilePage() {
                         >
                             {username || user?.username || "GUEST"}
                         </Text>
-                        <View className="px-2 py-0.5 rounded-full border" style={{ borderColor: AURA_PURPLE, backgroundColor: `${AURA_PURPLE}10` }}>
-                            <Text style={{ color: AURA_PURPLE, fontSize: 8, fontWeight: '900' }}>{aura.label} {currentAuraPoints}</Text>
+                        <View className="px-2 py-0.5 rounded-full border" style={{ borderColor: dynamicAuraColor, backgroundColor: `${dynamicAuraColor}10` }}>
+                            <Text style={{ color: dynamicAuraColor, fontSize: 8, fontWeight: '900' }}>{aura.label} {currentAuraPoints}</Text>
                         </View>
                     </Pressable>
 
-                    {/* 🔹 PURPLE POWER INDICATOR */}
+                    {/* 🔹 DYNAMIC POWER INDICATOR */}
                     <View className="mt-3 items-center">
                         <View className="flex-row gap-1 mb-1">
                             {[...Array(10)].map((_, i) => (
@@ -406,13 +433,13 @@ export default function MobileProfilePage() {
                                     key={i} 
                                     className="h-1.5 w-4 rounded-sm" 
                                     style={{ 
-                                        backgroundColor: i < filledBoxes ? AURA_PURPLE : (isDark ? '#1f2937' : '#e5e7eb'),
+                                        backgroundColor: i < filledBoxes ? dynamicAuraColor : (isDark ? '#1f2937' : '#e5e7eb'),
                                         opacity: i < filledBoxes ? 1 : 0.3 
                                     }}
                                 />
                             ))}
                         </View>
-                        <Text style={{ color: AURA_PURPLE }} className="text-[8px] font-black uppercase tracking-[0.2em]">
+                        <Text style={{ color: dynamicAuraColor }} className="text-[8px] font-black uppercase tracking-[0.2em]">
                             Aura Power: {filledBoxes}/10
                         </Text>
                     </View>
@@ -435,7 +462,7 @@ export default function MobileProfilePage() {
                     </Pressable>
                     <View className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden border border-gray-200 dark:border-white/10">
                         <View
-                            style={{ width: `${progress}%`, backgroundColor: AURA_PURPLE }}
+                            style={{ width: `${progress}%`, backgroundColor: dynamicAuraColor }}
                             className="h-full shadow-lg"
                         />
                     </View>
@@ -514,7 +541,7 @@ export default function MobileProfilePage() {
                 <TouchableOpacity
                     onPress={handleUpdate}
                     disabled={isUpdating}
-                    style={{ backgroundColor: AURA_PURPLE }}
+                    style={{ backgroundColor: dynamicAuraColor }}
                     className="relative w-full h-14 rounded-2xl overflow-hidden items-center justify-center mt-6"
                 >
                     <Text className="relative z-10 text-white font-black uppercase italic tracking-widest text-xs">
@@ -534,7 +561,7 @@ export default function MobileProfilePage() {
                 <View className="h-[1px] flex-1 bg-gray-100 dark:bg-gray-800" />
             </View>
         </View>
-    ), [user, preview, description, username, isUpdating, spin, translateX, totalPosts, copied, rankTitle, rankIcon, progress, nextMilestone, count, showId, isDark, aura, pulseAnim, filledBoxes, currentAuraPoints]); 
+    ), [user, preview, description, username, isUpdating, spin, translateX, totalPosts, copied, rankTitle, rankIcon, progress, nextMilestone, count, showId, isDark, aura, pulseAnim, filledBoxes, currentAuraPoints, dynamicAuraColor]); 
 
     if (contextLoading || isRestoringCache) {
         return <AnimeLoading message="Syncing Profile" subMessage="Checking local cache..." />;
@@ -602,7 +629,6 @@ export default function MobileProfilePage() {
                 )}
             />
 
-            {/* 🔹 RANK INFO MODAL */}
             <Modal visible={rankModalVisible} transparent animationType="fade">
                 <View className="flex-1 bg-black/80 items-center justify-center p-6">
                     <View className="bg-white dark:bg-[#0d1117] w-full p-8 rounded-[40px] border border-gray-200 dark:border-gray-800">
@@ -620,26 +646,25 @@ export default function MobileProfilePage() {
                 </View>
             </Modal>
 
-            {/* 🔹 AURA INFO MODAL (Purple Theme) */}
+            {/* 🔹 DYNAMIC AURA INFO MODAL */}
             <Modal visible={auraModalVisible} transparent animationType="fade">
                 <View className="flex-1 bg-black/80 items-center justify-center p-6">
-                    <View className="bg-white dark:bg-[#0d1117] w-full p-8 rounded-[40px] border-2" style={{ borderColor: AURA_PURPLE }}>
-                        <MaterialCommunityIcons name={aura.icon} size={60} color={AURA_PURPLE} style={{ alignSelf: 'center', marginBottom: 20 }} />
-                        <Text style={{ color: AURA_PURPLE }} className="text-3xl font-black text-center uppercase tracking-widest mb-2">{aura.label} POWER</Text>
+                    <View className="bg-white dark:bg-[#0d1117] w-full p-8 rounded-[40px] border-2" style={{ borderColor: dynamicAuraColor }}>
+                        <MaterialCommunityIcons name={aura.icon} size={60} color={dynamicAuraColor} style={{ alignSelf: 'center', marginBottom: 20 }} />
+                        <Text style={{ color: dynamicAuraColor }} className="text-3xl font-black text-center uppercase tracking-widest mb-2">{aura.label} POWER</Text>
                         <Text className="text-gray-500 text-center font-bold text-[10px] uppercase tracking-[0.3em] mb-2">Total Points: {currentAuraPoints}</Text>
                         
-                        {/* Modal Power Meter */}
                         <View className="flex-row justify-center gap-1 mb-6">
                             {[...Array(10)].map((_, i) => (
-                                <View key={i} className="h-2 w-4 rounded-sm" style={{ backgroundColor: i < filledBoxes ? AURA_PURPLE : '#374151' }} />
+                                <View key={i} className="h-2 w-4 rounded-sm" style={{ backgroundColor: i < filledBoxes ? dynamicAuraColor : '#374151' }} />
                             ))}
                         </View>
 
                         <Text className="text-gray-600 dark:text-gray-400 text-center leading-7 mb-8 font-medium">{aura.description}</Text>
-                        <TouchableOpacity onPress={() => setAuraModalVisible(false)} style={{ backgroundColor: AURA_PURPLE }} className="p-4 rounded-2xl items-center shadow-lg"><Text className="text-white font-black uppercase tracking-widest text-xs">Acknowledge</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setAuraModalVisible(false)} style={{ backgroundColor: dynamicAuraColor }} className="p-4 rounded-2xl items-center shadow-lg"><Text className="text-white font-black uppercase tracking-widest text-xs">Acknowledge</Text></TouchableOpacity>
                     </View>
                 </View>
             </Modal>
         </View>
     );
-}
+               }
