@@ -426,7 +426,21 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
         const isDirectVideo = post.mediaType?.startsWith("video") || lowerUrl.match(/\.(mp4|mov|m4v)$/i);
         const mediaTypeLabel = (isYouTube || isTikTok || isDirectVideo) ? "video" : "image";
 
-        if (!loadMedia) return <View className="my-2"><MediaPlaceholder height={similarPosts ? 160 : 250} type={mediaTypeLabel} onPress={() => setLoadMedia(true)}/></View>;
+        // 1. Identify media type first
+const isVideo = isYouTube || isTikTok || isDirectVideo;
+
+// 2. Only show placeholder for VIDEOS. Images will bypass this.
+if (!loadMedia && isVideo) {
+    return (
+        <View className="my-2">
+            <MediaPlaceholder 
+                height={similarPosts ? 160 : 250} 
+                type="video" 
+                onPress={() => setLoadMedia(true)}
+            />
+        </View>
+    );
+}
 
         const glassStyle = { borderWidth: 1, borderColor: 'rgba(96, 165, 250, 0.2)', shadowColor: "#60a5fa", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 10 };
 
