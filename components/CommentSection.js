@@ -284,9 +284,6 @@ export default function CommentSection({ postId, slug }) {
 	const [pagedComments, setPagedComments] = useState([]);
 	const [page, setPage] = useState(1);
 	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	
-	// 🔹 CRITICAL: Using a REF for the ID so it survives re-renders and data fetching
-	const pendingIdRef = useRef(null);
 
 	const loaderX = useSharedValue(-200);
 	useEffect(() => {
@@ -296,58 +293,22 @@ export default function CommentSection({ postId, slug }) {
 
 	const loaderStyle = useAnimatedStyle(() => ({ transform: [{ translateX: loaderX.value }] }));
 
-	// Fetch data
+	// Fetch page 1 + Auto Refresh
 	const { data, mutate, isLoading } = useSWR(
 		user?.deviceId ? `${API_URL}/api/posts/${postId}/comment?page=1&limit=40` : null,
 		(url) => apiFetch(url).then(res => res.json()),
 		{ refreshInterval: 5000 }
 	);
 
+	// Sync data with local paged array
 	useEffect(() => {
-		if (data?.comments && page === 1) {
-			setPagedComments(data.comments);
+		if (data?.comments) {
+			// If we are on page 1, reset. If we loaded more, append.
+			if (page === 1) {
+				setPagedComments(data.comments);
+			}
 		}
 	}, [data, page]);
-
-	// --- 1. Catch the URL and store it in the REF ---
-	useEffect(() => {
-		const parseUrl = (url) => {
-			if (!url) return;
-			const match = url.match(/discussion=([^&]+)/);
-			if (match && match[1]) {
-				pendingIdRef.current = match[1];
-				// Trigger a check immediately in case data is already here
-				checkAndOpen();
-			}
-		};
-
-		Linking.getInitialURL().then(parseUrl);
-		const sub = Linking.addEventListener('url', (e) => parseUrl(e.url));
-		return () => sub.remove();
-	}, [postId]);
-
-	// --- 2. The Opener Function ---
-	const checkAndOpen = () => {
-		if (pendingIdRef.current && pagedComments.length > 0) {
-			const found = pagedComments.find(c => c._id === pendingIdRef.current);
-			if (found) {
-				setActiveDiscussion(found);
-				pendingIdRef.current = null; // Mark as handled
-			}
-		}
-	};
-
-	// --- 3. Watch for comment updates ---
-	useEffect(() => {
-		checkAndOpen();
-	}, [pagedComments]);
-
-	useEffect(() => {
-		setPagedComments([]);
-		setPage(1);
-		setActiveDiscussion(null);
-		pendingIdRef.current = null;
-	}, [postId]);
 
 	const handleLoadMore = async () => {
 		if (isLoadingMore || !data?.hasMore) return;
@@ -362,6 +323,28 @@ export default function CommentSection({ postId, slug }) {
 			setIsLoadingMore(false);
 		}
 	};
+
+	useEffect(() => {
+		const parseAndOpen = (url) => {
+			if (!url) return;
+			const match = url.match(/discussion=([^&]+)/);
+			if (match && match[1]) {
+				const discussionId = match[1];
+				const target = pagedComments.find(c => c._id === discussionId);
+				if (target) setActiveDiscussion(target);
+			}
+		};
+		Linking.getInitialURL().then(parseAndOpen);
+		const sub = Linking.addEventListener('url', (e) => parseAndOpen(e.url));
+		return () => sub.remove();
+	}, [pagedComments]);
+
+	useEffect(() => {
+		if (activeDiscussion) {
+			const updated = pagedComments.find(c => c._id === activeDiscussion._id);
+			if (updated) setActiveDiscussion(updated);
+		}
+	}, [pagedComments]);
 
 	const handlePostComment = async (parentId = null, replyContent = null) => {
 		const content = replyContent || text;
@@ -468,4 +451,4 @@ export default function CommentSection({ postId, slug }) {
 			/>
 		</View>
 	);
-}
+	}
