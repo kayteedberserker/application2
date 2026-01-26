@@ -352,7 +352,7 @@ export default function AuthorPage() {
 
         <View className="flex-row items-center gap-4 mt-10 mb-4 px-2">
           <Text className="text-xl font-black italic uppercase tracking-tighter text-gray-900 dark:text-white">
-            Mission <Text style={{ color: aura ? aura.color : '#3b82f6' }}>History</Text>
+            Diary<Text style={{ color: aura ? aura.color : '#3b82f6' }}> Archives </Text>
           </Text>
           <View className="h-[1px] flex-1 bg-gray-100 dark:bg-gray-800" />
         </View>
