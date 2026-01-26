@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router"; // Added useRouter
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { 
     DeviceEventEmitter, 
@@ -9,9 +9,11 @@ import {
     Animated, 
     Easing, 
     TouchableOpacity,
-    Dimensions 
+    Dimensions,
+    ScrollView 
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // 🔹 Added for caching
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // 🔹 Added for bottom navbar padding
+import AsyncStorage from "@react-native-async-storage/async-storage"; 
 import AnimeLoading from "../../../components/AnimeLoading";
 import AppBanner from "../../../components/AppBanner";
 import PostCard from "../../../components/PostCard";
@@ -52,6 +54,7 @@ const getAuraTier = (rank) => {
 export default function AuthorPage() {
   const { id } = useLocalSearchParams()
   const router = useRouter();
+  const insets = useSafeAreaInsets(); // 🔹 Hook to detect navbar height
   const [author, setAuthor] = useState(null)
   const [posts, setPosts] = useState([]);
   const [totalPosts, setTotalPosts] = useState(0); 
@@ -59,7 +62,8 @@ export default function AuthorPage() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [isOffline, setIsOffline] = useState(false); // 🔹 Track offline status
+  const [isOffline, setIsOffline] = useState(false);
+  const [isInitialMount, setIsInitialMount] = useState(true); // 🔹 To force loading animation on start
 
   const scrollRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -70,7 +74,6 @@ export default function AuthorPage() {
   const CACHE_KEY_POSTS = `author_posts_${id}`;
 
   useEffect(() => {
-    // Pulse and Rotation existing logic
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.15, duration: 2500, useNativeDriver: true }),
@@ -87,7 +90,6 @@ export default function AuthorPage() {
       })
     ).start();
 
-    // Skeleton Shimmer effect
     Animated.loop(
         Animated.sequence([
           Animated.timing(skeletonFade, { toValue: 0.7, duration: 800, useNativeDriver: true }),
@@ -108,7 +110,6 @@ export default function AuthorPage() {
     return () => sub.remove();
   }, []);
 
-  // 🔹 Caching Helpers
   const loadCache = async () => {
     try {
         const [cAuth, cPosts] = await Promise.all([
@@ -147,6 +148,8 @@ export default function AuthorPage() {
       setIsOffline(true);
     } finally {
       setLoading(false);
+      // Give the loading animation a tiny bit of breathing room to ensure it shows
+      setTimeout(() => setIsInitialMount(false), 800);
     }
   };
 
@@ -176,7 +179,6 @@ export default function AuthorPage() {
     loadCache().then(() => fetchInitialData());
   }, [id]);
 
-  // 🔹 Skeleton Component
   const AuthorSkeleton = () => (
     <View className="px-4 pt-20 pb-6 opacity-40">
         <View className="p-6 bg-gray-100 dark:bg-[#111] border border-gray-200 dark:border-gray-800 rounded-[40px] items-center">
@@ -377,12 +379,15 @@ export default function AuthorPage() {
     );
   };
 
-  // 🔹 Offline / No Author UI Overlay
+  // 🔹 Offline / No Author UI Overlay (Updated to ScrollView)
   if (!author && isOffline) {
     return (
-        <View className="flex-1 bg-white dark:bg-[#0a0a0a]">
+        <ScrollView 
+            className="flex-1 bg-white dark:bg-[#0a0a0a]"
+            contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        >
             <AuthorSkeleton />
-            <View className="flex-1 items-center justify-center px-10 -mt-20">
+            <View className="items-center justify-center px-10 -mt-10">
                 <MaterialCommunityIcons name="wifi-strength-1-alert" size={48} color="#ef4444" />
                 <Text className="text-2xl font-black uppercase italic text-red-600 mt-4">Signal Interrupted</Text>
                 <Text className="text-center text-gray-500 dark:text-gray-400 mt-2 mb-8 font-medium">
@@ -390,7 +395,7 @@ export default function AuthorPage() {
                 </Text>
                 <TouchableOpacity 
                     onPress={fetchInitialData}
-                    className="bg-red-600 px-8 py-3 rounded-full flex-row items-center gap-2"
+                    className="bg-red-600 px-8 py-3 rounded-full flex-row items-center gap-2 shadow-lg"
                 >
                     <Ionicons name="refresh" size={18} color="white" />
                     <Text className="text-white font-black uppercase tracking-widest text-xs">Reconnect</Text>
@@ -399,11 +404,12 @@ export default function AuthorPage() {
                     <Text className="text-gray-400 font-bold uppercase tracking-widest text-[10px]">Return to Base</Text>
                 </TouchableOpacity>
             </View>
-        </View>
+        </ScrollView>
     );
   }
 
-  if (loading && posts.length === 0 && !author) {
+  // 🔹 Updated condition: Show loading animation until InitialMount is finished
+  if (isInitialMount && posts.length === 0 && !author) {
     return <AnimeLoading message="Loading Author" subMessage="Decoding biological data..." />;
   }
 
@@ -431,7 +437,8 @@ export default function AuthorPage() {
       refreshing={refreshing}
       onScroll={(e) => { DeviceEventEmitter.emit("onScroll", e.nativeEvent.contentOffset.y); }}
       scrollEventThrottle={16}
-      contentContainerStyle={{ paddingBottom: 120 }}
+      // 🔹 Respect Safe Area Bottom Inset
+      contentContainerStyle={{ paddingBottom: insets.bottom + 100 }} 
       className="bg-white dark:bg-[#0a0a0a]"
     />
   );
