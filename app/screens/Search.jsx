@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
     View,
     TextInput,
@@ -7,13 +7,12 @@ import {
     Image,
     ActivityIndicator,
     SafeAreaView,
-    Keyboard,
     Platform,
     StatusBar,
     ScrollView,
     useColorScheme 
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"; // Added MaterialCommunityIcons for aura icons
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"; 
 import { useRouter } from "expo-router";
 import apiFetch from "../../utils/apiFetch";
 import { Text } from "../../components/Text"; 
@@ -35,7 +34,6 @@ const resolveUserRank = (totalPosts) => {
 const AuthorCard = ({ author, isDark }) => {
     const router = useRouter();
     
-    // 🔹 UPDATED AURA VISUALS LOGIC
     const getAuraVisuals = (rank) => {
         if (!rank || rank > 10 || rank <= 0) return { color: isDark ? '#1e293b' : '#cbd5e1', label: 'OPERATIVE', icon: 'target' };
         switch (rank) {
@@ -43,7 +41,7 @@ const AuthorCard = ({ author, isDark }) => {
             case 2: return { color: '#ef4444', label: 'YONKO', icon: 'flare' };
             case 3: return { color: '#a855f7', label: 'KAGE', icon: 'moon-waxing-crescent' };
             case 4: return { color: '#3b82f6', label: 'SHOGUN', icon: 'shield-star' };
-            case 5: return { color: '#e0f2fe', label: 'ESPADA 0', icon: 'skull' }; // Reiatsu White
+            case 5: return { color: '#e0f2fe', label: 'ESPADA 0', icon: 'skull' };
             case 6: return { color: '#cbd5e1', label: 'ESPADA 1', icon: 'sword-cross' };
             case 7: return { color: '#94a3b8', label: 'ESPADA 2', icon: 'sword-cross' };
             case 8: return { color: '#64748b', label: 'ESPADA 3', icon: 'sword-cross' };
@@ -176,7 +174,7 @@ const SearchScreen = () => {
     const [activeTab, setActiveTab] = useState("all");
     const [recentSearches, setRecentSearches] = useState([]);
     const [trending] = useState(["Solo Leveling", "Genshin Build", "Aura Guide", "Top Operatives", "Winter 2026 Anime"]);
-    const [isOffline, setIsOffline] = useState(false); // 🔹 Track offline status
+    const [isOffline, setIsOffline] = useState(false); 
     
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
@@ -198,8 +196,9 @@ const SearchScreen = () => {
     };
 
     const performSearch = useCallback(async (text, pageNum = 1, shouldAppend = false) => {
-        if (text.length < 2) {
+        if (!text || text.trim().length < 2) {
             setResults({ authors: [], posts: [] });
+            setLoading(false);
             return;
         }
 
@@ -212,14 +211,18 @@ const SearchScreen = () => {
             const data = await response.json();
             
             if (response.ok) {
+                // 🔹 Ensure we fall back to empty arrays if data keys are missing
+                const newAuthors = data.users || data.authors || [];
+                const newPosts = data.posts || [];
+
                 setResults(prev => ({
-                    authors: shouldAppend ? prev.authors : (data.users || []),
-                    posts: shouldAppend ? [...prev.posts, ...data.posts] : (data.posts || [])
+                    authors: shouldAppend ? [...prev.authors, ...newAuthors] : newAuthors,
+                    posts: shouldAppend ? [...prev.posts, ...newPosts] : newPosts
                 }));
-                setHasMore(data.pagination?.hasNextPage);
+                
+                setHasMore(data.pagination?.hasNextPage || false);
                 if (pageNum === 1) saveSearch(text);
             } else {
-                // Handle non-ok response as potential offline/network error
                 setIsOffline(true);
             }
         } catch (error) {
@@ -233,21 +236,34 @@ const SearchScreen = () => {
 
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
-            setPage(1);
-            performSearch(query, 1, false);
+            if (query.trim().length >= 2) {
+                setPage(1);
+                performSearch(query, 1, false);
+            } else {
+                setResults({ authors: [], posts: [] });
+                setLoading(false);
+            }
         }, 400);
         return () => clearTimeout(delayDebounceFn);
-    }, [query]);
+    }, [query, performSearch]);
 
     const handleLoadMore = () => {
-        if (!loadingMore && hasMore && query.length > 1 && !isOffline) {
+        if (!loadingMore && hasMore && query.length > 1 && !isOffline && !loading) {
             const nextPage = page + 1;
             setPage(nextPage);
             performSearch(query, nextPage, true);
         }
     };
 
+    // 🔹 useMemo ensures the list only recalculates when dependencies change
+    const filteredData = useMemo(() => {
+        const authors = (activeTab === 'all' || activeTab === 'authors') ? results.authors : [];
+        const posts = (activeTab === 'all' || activeTab === 'posts') ? results.posts : [];
+        return [...authors, ...posts];
+    }, [results, activeTab]);
+
     const renderItem = ({ item }) => {
+        // Distinguish between user objects (username) and post objects (title)
         if (item.username) return <AuthorCard author={item} isDark={isDark} />;
         return <PostSearchCard item={item} isDark={isDark} />;
     };
@@ -258,7 +274,6 @@ const SearchScreen = () => {
             
             <View style={{ height: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }} />
 
-            {/* Header / Search Bar */}
             <View className="px-4 py-3 flex-row items-center">
                 <TouchableOpacity onPress={() => router.back()} className="pr-3">
                     <Ionicons name="chevron-back" size={32} color={isDark ? "white" : "black"} />
@@ -284,7 +299,6 @@ const SearchScreen = () => {
                 </View>
             </View>
 
-            {/* Main Content Area */}
             {query.length < 2 ? (
                 <ScrollView className="flex-1 px-6">
                     <View className="mt-8">
@@ -317,7 +331,6 @@ const SearchScreen = () => {
                 </ScrollView>
             ) : (
                 <>
-                    {/* Tabs Section */}
                     {!isOffline && (
                         <View className="flex-row px-4 py-3 gap-2">
                             {['all', 'authors', 'posts'].map((tab) => (
@@ -332,7 +345,6 @@ const SearchScreen = () => {
                         </View>
                     )}
 
-                    {/* Search Results List */}
                     <View className="flex-1 px-4 mt-2">
                         {loading && page === 1 ? (
                             <View className="flex-1 justify-center items-center">
@@ -340,7 +352,6 @@ const SearchScreen = () => {
                                 <Text className="text-blue-500 text-[10px] font-black mt-6 tracking-[0.5em] uppercase animate-pulse">Establishing_Link...</Text>
                             </View>
                         ) : isOffline ? (
-                            // 🔹 OFFLINE UI VERSION
                             <Animated.View entering={FadeIn.duration(400)} className="flex-1 items-center justify-center px-10">
                                 <MaterialCommunityIcons name="wifi-strength-1-alert" size={80} color="#ef4444" className="opacity-50" />
                                 <Text className="text-red-500 font-black text-xl italic uppercase tracking-tighter mt-4 text-center">Signal Interrupted</Text>
@@ -357,10 +368,7 @@ const SearchScreen = () => {
                             </Animated.View>
                         ) : (
                             <FlatList
-                                data={[
-                                    ...(activeTab === 'all' || activeTab === 'authors' ? results.authors : []),
-                                    ...(activeTab === 'all' || activeTab === 'posts' ? results.posts : [])
-                                ]}
+                                data={filteredData}
                                 keyExtractor={(item) => item._id}
                                 renderItem={renderItem}
                                 onEndReached={handleLoadMore}
