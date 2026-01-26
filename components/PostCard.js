@@ -450,17 +450,18 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
                 </Text>
                 
                 {/* 🛡️ RANK BADGE (Now visible on all pages) */}
-                {isTop10 && (
-                  <View className="bg-white/10 px-1.5 py-0.5 rounded border flex-row items-center gap-1" style={{ borderColor: aura.color + '40' }}>
-                    <MaterialCommunityIcons name={aura.icon} size={8} color={aura.color} />
-                    <Text style={{ color: aura.color, fontSize: 7, fontWeight: '900' }}>{aura.label}</Text>
-                  </View>
-                )}
+                
 
                 <Text className="text-gray-500 font-normal normal-case tracking-normal"> • </Text>
                 <Ionicons name="flame" size={12} color={author.streak < 0 ? "#ef4444" : "#f97316"} />
                 <Text className="text-gray-500 text-[11px] font-bold">{author.streak || "0"}</Text>
               </View>
+                  {isTop10 && (
+                  <View className="bg-white/10 px-1.5 py-0.5 rounded border flex-row items-center gap-1" style={{ borderColor: aura.color + '40' }}>
+                    <MaterialCommunityIcons name={aura.icon} size={8} color={aura.color} />
+                    <Text style={{ color: aura.color, fontSize: 7, fontWeight: '900' }}>{aura.label}</Text>
+                  </View>
+                )}
               <Text className="text-[11px] mt-1 text-gray-900 dark:text-white font-bold uppercase tracking-tighter">{userRank.rankName || "Verified Author"}</Text>
             </View>
           </Pressable>
