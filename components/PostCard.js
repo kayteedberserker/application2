@@ -396,8 +396,8 @@ export default function PostCard({ post, setPosts, isFeed, hideMedia, similarPos
             {/* 🔹 ANIMATED PROFILE PIC SECTION */}
             <View className="relative shrink-0 w-14 h-14 items-center justify-center">
               
-              {/* Rotating Outer Frame (Top 3 only) */}
-              {isTop10 && author.rank <= 3 && (
+              {/* Rotating Outer Frame (Top 5 only) */}
+              {isTop10 && author.rank <= 5 && (
                 <Animated.View 
                   style={[
                     getRankedFrameStyle(),
