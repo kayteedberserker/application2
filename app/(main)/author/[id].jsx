@@ -179,7 +179,7 @@ export default function AuthorPage() {
               <View className="relative items-center justify-center">
                 
                 {/* 🔹 ROTATING OUTER FRAME (Monarch & Yonko only) */}
-                {auraRank > 0 && auraRank <= 2 && (
+                {auraRank > 0 && auraRank <= 5 && (
                     <Animated.View 
                         style={[
                             getBadgeStyle(),
