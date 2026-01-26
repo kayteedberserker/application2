@@ -193,13 +193,13 @@ export default function Leaderboard() {
                             }}>
                                 {(item.username || "GUEST").toUpperCase()}
                             </Text>
-                            {aura && (
-                                <View style={{ marginLeft: 6, backgroundColor: aura.color, paddingHorizontal: 4, borderRadius: 4 }}>
+                            
+                        </View>
+                        {aura && (
+                                <View className=" w-fit" style={{ marginLeft: 6, backgroundColor: aura.color, paddingHorizontal: 4, borderRadius: 4 }}>
                                     <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#000' }}>{aura.label}</Text>
                                 </View>
                             )}
-                        </View>
-                        
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
                             <Text style={{ fontSize: 9, fontWeight: 'bold', color: writerRank.color, letterSpacing: 1 }}>
                                 {writerRank.icon} {writerRank.title}
