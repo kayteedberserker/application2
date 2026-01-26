@@ -11,9 +11,9 @@ import {
     Platform,
     StatusBar,
     ScrollView,
-    useColorScheme // Added for dynamic theme support
+    useColorScheme 
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"; // Added MaterialCommunityIcons for aura icons
 import { useRouter } from "expo-router";
 import apiFetch from "../../utils/apiFetch";
 import { Text } from "../../components/Text"; 
@@ -35,21 +35,25 @@ const resolveUserRank = (totalPosts) => {
 const AuthorCard = ({ author, isDark }) => {
     const router = useRouter();
     
-    const getAuraTier = (rank) => {
-        if (!rank || rank > 10 || rank <= 0) {
-            return { color: isDark ? '#94a3b8' : '#64748b', label: 'OPERATIVE' };
-        }
+    // 🔹 UPDATED AURA VISUALS LOGIC
+    const getAuraVisuals = (rank) => {
+        if (!rank || rank > 10 || rank <= 0) return { color: isDark ? '#1e293b' : '#cbd5e1', label: 'OPERATIVE', icon: 'target' };
         switch (rank) {
-            case 1: return { color: '#fbbf24', label: 'MONARCH' }; 
-            case 2: return { color: '#ef4444', label: 'YONKO' };   
-            case 3: return { color: '#a855f7', label: 'KAGE' };    
-            case 4: return { color: '#3b82f6', label: 'SHOGUN' };  
-            case 5: return { color: isDark ? '#ffffff' : '#000000', label: 'ESPADA 0' }; 
-            default: return { color: isDark ? '#e5e7eb' : '#4b5563', label: `ESPADA ${rank - 4}` };
+            case 1: return { color: '#fbbf24', label: 'MONARCH', icon: 'crown' };
+            case 2: return { color: '#ef4444', label: 'YONKO', icon: 'flare' };
+            case 3: return { color: '#a855f7', label: 'KAGE', icon: 'moon-waxing-crescent' };
+            case 4: return { color: '#3b82f6', label: 'SHOGUN', icon: 'shield-star' };
+            case 5: return { color: '#e0f2fe', label: 'ESPADA 0', icon: 'skull' }; // Reiatsu White
+            case 6: return { color: '#cbd5e1', label: 'ESPADA 1', icon: 'sword-cross' };
+            case 7: return { color: '#94a3b8', label: 'ESPADA 2', icon: 'sword-cross' };
+            case 8: return { color: '#64748b', label: 'ESPADA 3', icon: 'sword-cross' };
+            case 9: return { color: '#475569', label: 'ESPADA 4', icon: 'sword-cross' };
+            case 10: return { color: '#334155', label: 'ESPADA 5', icon: 'sword-cross' };
+            default: return { color: '#1e293b', label: 'OPERATIVE', icon: 'target' };
         }
     };
 
-    const tier = getAuraTier(author.previousRank);
+    const tier = getAuraVisuals(author.previousRank);
     const writerRank = resolveUserRank(author.postsCount);
 
     return (
@@ -70,10 +74,13 @@ const AuthorCard = ({ author, isDark }) => {
 
                     <View className="flex-1 ml-4 justify-center">
                         <View className="flex-row items-center justify-between mb-1">
-                            <Text numberOfLines={1} className={`font-black italic uppercase tracking-tighter text-lg flex-1 mr-2 ${isDark ? 'text-white' : 'text-black'}`}>
-                                {author.username}
-                            </Text>
-                            <View style={{ backgroundColor: `${tier.color}20`, borderColor: `${tier.color}40` }} className="px-2 py-0.5 rounded-md border">
+                            <View className="flex-row items-center flex-1 mr-2">
+                                <Text numberOfLines={1} className={`font-black italic uppercase tracking-tighter text-lg ${isDark ? 'text-white' : 'text-black'}`}>
+                                    {author.username}
+                                </Text>
+                            </View>
+                            <View style={{ backgroundColor: `${tier.color}20`, borderColor: `${tier.color}40` }} className="px-2 py-0.5 rounded-md border flex-row items-center gap-1">
+                                <MaterialCommunityIcons name={tier.icon} size={8} color={tier.color} />
                                 <Text style={{ color: tier.color }} className="text-[8px] font-black uppercase tracking-widest">{tier.label}</Text>
                             </View>
                         </View>
@@ -100,7 +107,7 @@ const AuthorCard = ({ author, isDark }) => {
                                 </View>
                             </View>
                             <View className={`${isDark ? 'bg-zinc-800' : 'bg-zinc-100'} px-2 py-0.5 rounded-full border ${isDark ? 'border-zinc-700' : 'border-zinc-200'}`}>
-                                <Text className="text-[9px] font-black text-blue-500 uppercase">AURA: {author.weeklyAura || 0}</Text>
+                                <Text style={{ color: tier.color }} className="text-[9px] font-black uppercase">AURA: {author.weeklyAura || 0}</Text>
                             </View>
                         </View>
                     </View>
@@ -159,7 +166,7 @@ const PostSearchCard = ({ item, isDark }) => {
 // --- MAIN SEARCH SCREEN ---
 const SearchScreen = () => {
     const router = useRouter();
-    const systemTheme = useColorScheme(); // Hook into system theme
+    const systemTheme = useColorScheme(); 
     const isDark = systemTheme === 'dark';
     
     const [query, setQuery] = useState("");
@@ -169,6 +176,7 @@ const SearchScreen = () => {
     const [activeTab, setActiveTab] = useState("all");
     const [recentSearches, setRecentSearches] = useState([]);
     const [trending] = useState(["Solo Leveling", "Genshin Build", "Aura Guide", "Top Operatives", "Winter 2026 Anime"]);
+    const [isOffline, setIsOffline] = useState(false); // 🔹 Track offline status
     
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
@@ -197,6 +205,7 @@ const SearchScreen = () => {
 
         if (pageNum === 1) setLoading(true);
         else setLoadingMore(true);
+        setIsOffline(false);
 
         try {
             const response = await apiFetch(`https://oreblogda.com/api/search?q=${encodeURIComponent(text)}&page=${pageNum}&limit=10`);
@@ -209,9 +218,13 @@ const SearchScreen = () => {
                 }));
                 setHasMore(data.pagination?.hasNextPage);
                 if (pageNum === 1) saveSearch(text);
+            } else {
+                // Handle non-ok response as potential offline/network error
+                setIsOffline(true);
             }
         } catch (error) {
             console.error("Search Error:", error);
+            setIsOffline(true);
         } finally {
             setLoading(false);
             setLoadingMore(false);
@@ -227,7 +240,7 @@ const SearchScreen = () => {
     }, [query]);
 
     const handleLoadMore = () => {
-        if (!loadingMore && hasMore && query.length > 1) {
+        if (!loadingMore && hasMore && query.length > 1 && !isOffline) {
             const nextPage = page + 1;
             setPage(nextPage);
             performSearch(query, nextPage, true);
@@ -257,7 +270,10 @@ const SearchScreen = () => {
                         placeholderTextColor={isDark ? "#3f3f46" : "#a1a1aa"}
                         className={`flex-1 ml-3 font-bold text-sm tracking-widest ${isDark ? 'text-white' : 'text-black'}`}
                         value={query}
-                        onChangeText={setQuery}
+                        onChangeText={(t) => {
+                            setQuery(t);
+                            if (isOffline) setIsOffline(false);
+                        }}
                         autoFocus
                     />
                     {query.length > 0 && (
@@ -302,17 +318,19 @@ const SearchScreen = () => {
             ) : (
                 <>
                     {/* Tabs Section */}
-                    <View className="flex-row px-4 py-3 gap-2">
-                        {['all', 'authors', 'posts'].map((tab) => (
-                            <TouchableOpacity
-                                key={tab}
-                                onPress={() => setActiveTab(tab)}
-                                className={`px-6 py-2 rounded-xl border ${activeTab === tab ? "bg-blue-600 border-blue-600 shadow-sm" : isDark ? "bg-transparent border-zinc-800" : "bg-gray-50 border-gray-200"}`}
-                            >
-                                <Text className={`text-[10px] font-black uppercase tracking-widest ${activeTab === tab ? "text-white" : "text-zinc-500"}`}>{tab}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
+                    {!isOffline && (
+                        <View className="flex-row px-4 py-3 gap-2">
+                            {['all', 'authors', 'posts'].map((tab) => (
+                                <TouchableOpacity
+                                    key={tab}
+                                    onPress={() => setActiveTab(tab)}
+                                    className={`px-6 py-2 rounded-xl border ${activeTab === tab ? "bg-blue-600 border-blue-600 shadow-sm" : isDark ? "bg-transparent border-zinc-800" : "bg-gray-50 border-gray-200"}`}
+                                >
+                                    <Text className={`text-[10px] font-black uppercase tracking-widest ${activeTab === tab ? "text-white" : "text-zinc-500"}`}>{tab}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
 
                     {/* Search Results List */}
                     <View className="flex-1 px-4 mt-2">
@@ -321,6 +339,22 @@ const SearchScreen = () => {
                                 <ActivityIndicator color="#2563eb" size="large" />
                                 <Text className="text-blue-500 text-[10px] font-black mt-6 tracking-[0.5em] uppercase animate-pulse">Establishing_Link...</Text>
                             </View>
+                        ) : isOffline ? (
+                            // 🔹 OFFLINE UI VERSION
+                            <Animated.View entering={FadeIn.duration(400)} className="flex-1 items-center justify-center px-10">
+                                <MaterialCommunityIcons name="wifi-strength-1-alert" size={80} color="#ef4444" className="opacity-50" />
+                                <Text className="text-red-500 font-black text-xl italic uppercase tracking-tighter mt-4 text-center">Signal Interrupted</Text>
+                                <Text className="text-zinc-500 text-center mt-2 mb-8 font-medium italic">
+                                    The data stream is currently offline. Please check your neural connection.
+                                </Text>
+                                <TouchableOpacity 
+                                    onPress={() => performSearch(query, 1, false)}
+                                    className="bg-red-500/10 border border-red-500/20 px-8 py-3 rounded-full flex-row items-center gap-2"
+                                >
+                                    <Ionicons name="refresh" size={18} color="#ef4444" />
+                                    <Text className="text-red-500 font-black uppercase tracking-widest text-xs">Retry Scan</Text>
+                                </TouchableOpacity>
+                            </Animated.View>
                         ) : (
                             <FlatList
                                 data={[
