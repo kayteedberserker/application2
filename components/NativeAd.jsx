@@ -12,10 +12,10 @@ import {
 import { Text } from "./Text";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 
-const AD_UNIT_ID =
-  Platform.OS === "ios"
-    ? "ca-app-pub-3940256099942544/3986624511"
-    : "ca-app-pub-8021671365048667/1282169688";
+const AD_UNIT_ID = Platform.select({
+  ios: __DEV__ ? "ca-app-pub-3940256099942544/3986624511" : "YOUR_REAL_IOS_ID",
+  android: !__DEV__ ? "ca-app-pub-3940256099942544/2247696110" : "ca-app-pub-8021671365048667/1282169688",
+});
 
 /* ================== AUTHOR STYLE ================== */
 export const NativeAdAuthorStyle = ({ isDark }) => {
