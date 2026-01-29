@@ -145,9 +145,10 @@ export default function CategoryPage() {
             <View className="px-4">
                 <PostCard post={item} isFeed />
                 {showAd && (
-                    <View style={{ marginTop: 12 }}> 
-                    <NativeAdPostStyle isDark={isDark} />
-                </View>
+                    <View className="mb-8 mt-2 items-center bg-gray-50 dark:bg-gray-800/30 py-4 rounded-2xl border border-gray-100 dark:border-gray-800">
+                        <RNText className="text-[10px] text-gray-400 mb-2 uppercase tracking-widest">Sponsored Transmission</RNText>
+                        <AppBanner size="MEDIUM_RECTANGLE" />
+                    </View>
                 )}
             </View>
         );
