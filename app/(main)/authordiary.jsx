@@ -34,6 +34,8 @@ Notifications.setNotificationHandler({
         shouldSetBadge: false,
     }),
 });
+const COOLDOWN_NOTIFICATION_KEY = "cooldown_notification_id";
+
 
 const API_BASE = "https://oreblogda.com/api";
 const fetcher = (url) => apiFetch(url).then((res) => res.json());
@@ -386,21 +388,48 @@ export default function AuthorDiaryDashboard() {
 
         // Only run timer if we are actually blocked AND have a target time
         if ((postsLast24h >= maxPostsToday) && targetTime) {
-            
-            // Notification scheduler (only if not already rewarded)
-            const scheduleDoneNotification = async () => {
-                if (!rewardToken) {
-                     // logic to schedule notification (kept simple here)
-                     const triggerInSeconds = Math.floor((targetTime - new Date().getTime()) / 1000);
-                     if (triggerInSeconds > 0) {
-                        await Notifications.cancelAllScheduledNotificationsAsync();
-                        await Notifications.scheduleNotificationAsync({
-                            content: { title: "Cooldown Finished! 🎉", body: "New slot available. Post now!", sound: true, data: { type: "open_diary" } },
-                            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(targetTime), channelId: 'default' },
-                        });
-                     }
-                }
-            }
+      
+const scheduleDoneNotification = async () => {
+  if (rewardToken) return;
+
+  await ensurePermissions();
+
+  const now = Date.now();
+  const triggerInSeconds = Math.floor((targetTime - now) / 1000);
+
+  if (triggerInSeconds <= 0) {
+    console.log("Target time already passed");
+    return;
+  }
+
+  // 🔹 Check if we already scheduled one
+  const existingId = await AsyncStorage.getItem(COOLDOWN_NOTIFICATION_KEY);
+
+  if (existingId) {
+    // 🔹 Cancel only this cooldown notification
+    await Notifications.cancelScheduledNotificationAsync(existingId);
+  }
+
+  // 🔹 Schedule fresh notification
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Cooldown Finished! 🎉",
+      body: "New slot available. Post now!",
+      sound: true,
+      data: { type: "open_diary" },
+    },
+    trigger: {
+      seconds: triggerInSeconds,
+      channelId: "default",
+    },
+  });
+
+  // 🔹 Store the new ID
+  await AsyncStorage.setItem(
+    COOLDOWN_NOTIFICATION_KEY,
+    notificationId
+  );
+};
             scheduleDoneNotification();
 
             const calculateTime = () => {
