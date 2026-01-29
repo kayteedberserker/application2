@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Platform, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
+import mobileAds, {
   NativeAdView,
   CallToActionView,
   HeadlineView,
@@ -21,6 +21,23 @@ const AD_UNIT_ID = Platform.select({
 export const NativeAdAuthorStyle = ({ isDark }) => {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [sdkReady, setSdkReady] = useState(false);
+
+  // 🛡️ Safety Check: Ensure SDK is initialized before mounting NativeAdView
+  useEffect(() => {
+    mobileAds()
+      .initialize()
+      .then(() => setSdkReady(true))
+      .catch(() => setError(true));
+  }, []);
+
+  if (!sdkReady && !error) {
+    return (
+      <View style={{ height: 100, justifyContent: 'center' }}>
+        <ActivityIndicator color={isDark ? "white" : "black"} />
+      </View>
+    );
+  }
 
   return (
     <Animated.View entering={FadeInDown.duration(400)} className="mb-3">
@@ -47,7 +64,10 @@ export const NativeAdAuthorStyle = ({ isDark }) => {
           requestOptions={{ requestNonPersonalizedAdsOnly: true }}
           style={{ width: "100%", display: loaded ? "flex" : "none" }}
           onAdLoaded={() => setLoaded(true)}
-          onAdFailedToLoad={() => setError(true)}
+          onAdFailedToLoad={(err) => {
+            console.error("Ad Load Error:", err);
+            setError(true);
+          }}
         >
           <View
             className={`p-4 rounded-3xl border flex-row items-center ${
@@ -150,6 +170,22 @@ export const NativeAdAuthorStyle = ({ isDark }) => {
 export const NativeAdPostStyle = ({ isDark }) => {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [sdkReady, setSdkReady] = useState(false);
+
+  useEffect(() => {
+    mobileAds()
+      .initialize()
+      .then(() => setSdkReady(true))
+      .catch(() => setError(true));
+  }, []);
+
+  if (!sdkReady && !error) {
+    return (
+      <View style={{ height: 220, justifyContent: 'center' }}>
+        <ActivityIndicator color={isDark ? "white" : "black"} />
+      </View>
+    );
+  }
 
   return (
     <Animated.View entering={FadeIn.duration(500)} className="mb-5">
@@ -176,7 +212,10 @@ export const NativeAdPostStyle = ({ isDark }) => {
           requestOptions={{ requestNonPersonalizedAdsOnly: true }}
           style={{ width: "100%", display: loaded ? "flex" : "none" }}
           onAdLoaded={() => setLoaded(true)}
-          onAdFailedToLoad={() => setError(true)}
+          onAdFailedToLoad={(err) => {
+            console.error("Ad Load Error:", err);
+            setError(true);
+          }}
         >
           <View
             className={`rounded-[2.5rem] border overflow-hidden ${
