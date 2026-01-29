@@ -152,7 +152,7 @@ export default function PostsViewer() {
             {/* The Ad Injection */}
             {showAd && ready && (
                 <View style={{ marginTop: 12 }}> 
-                    <NativeAdPostStyle isDark={isDark} />
+                  //  <NativeAdPostStyle isDark={isDark} />
                 </View>
             )}
         </View>
