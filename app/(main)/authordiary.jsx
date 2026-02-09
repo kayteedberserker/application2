@@ -6,6 +6,7 @@ import { Link, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator, Alert,
+    Image,
     Linking,
     Platform,
     ScrollView,
@@ -46,7 +47,7 @@ async function getUserTotalPosts(deviceId) {
         const res = await apiFetch(`/posts?author=${deviceId}`);
         if (!res.ok) throw new Error("Failed to fetch posts");
         const data = await res.json();
-        
+
         return data?.total;
     } catch (err) {
         console.error("Error fetching total posts:", err);
@@ -204,7 +205,7 @@ export default function AuthorDiaryDashboard() {
             if (!user?.deviceId) return;
 
             const total = await getUserTotalPosts(user?.deviceId);
-            
+
             if (total !== null) {
                 // Online success
                 const rank = resolveUserRank(total);
@@ -220,7 +221,7 @@ export default function AuthorDiaryDashboard() {
 
     // B. FETCH TODAY'S POSTS (SWR + Cache + Offline Mode)
     const { data: todayPostsData, mutate: mutateTodayPosts, error: swrError } = useSWR(
-        user?.deviceId ? `${API_BASE}/posts?author=${user.deviceId}&last24Hours=true` : null,
+        user?.deviceId ? `/posts?author=${user.deviceId}&last24Hours=true` : null,
         fetcher,
         {
             refreshInterval: isOfflineMode ? 0 : 5000, // Stop polling if offline
@@ -403,11 +404,11 @@ export default function AuthorDiaryDashboard() {
         const targetTime = getNextUnlockTime();
 
         // Only run timer if we are actually blocked AND have a target time
-        if ((postsLast24h >= maxPostsToday) && targetTime) {
+
+        if ((postsLast24h >= 1) && targetTime) {
 
             const scheduleDoneNotification = async () => {
                 if (rewardToken) return;
-
                 const now = Date.now();
                 const triggerInSeconds = Math.floor((targetTime - now) / 1000);
 
@@ -415,7 +416,6 @@ export default function AuthorDiaryDashboard() {
                     console.log("Target time already passed");
                     return;
                 }
-
                 const existingId = await AsyncStorage.getItem(COOLDOWN_NOTIFICATION_KEY);
                 if (existingId) {
                     try {
@@ -433,6 +433,8 @@ export default function AuthorDiaryDashboard() {
                             sound: 'default', // Changed to string 'default'
                             priority: 'high', // Ensure high priority for Android
                             data: { type: "open_diary" },
+                            android: { channelId: "cooldown-timer", groupKey: "com.oreblogda.COOLDOWN_GROUP" },
+                            threadIdentifier: "com.oreblogda.COOLDOWN_GROUP"
                         },
                         trigger: {
                             // Use the channelId we created above
@@ -442,9 +444,8 @@ export default function AuthorDiaryDashboard() {
                             repeats: false,
                         },
                     });
-
+                    
                     await AsyncStorage.setItem(COOLDOWN_NOTIFICATION_KEY, notificationId);
-                    console.log("Notification scheduled for:", triggerInSeconds, "seconds");
                 } catch (error) {
                     console.error("Failed to schedule notification:", error);
                 }
@@ -547,48 +548,89 @@ export default function AuthorDiaryDashboard() {
             }
         }, 50);
     };
-
+    const [mediaList, setMediaList] = useState([]); // Array of {url, type}
     const pickImage = async () => {
-        let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, quality: 0.5 });
+        const remainingSlots = 5 - mediaList.length;
+        if (remainingSlots <= 0) {
+            Alert.alert("Limit Reached", "You can only upload a maximum of 5 media files.");
+            return;
+        }
+
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
+            allowsMultipleSelection: true, // Enable multi-selection
+            selectionLimit: remainingSlots,
+            quality: 0.5,
+        });
+
         if (!result.canceled) {
-            const selected = result.assets[0];
-            const isVideo = selected.type === "video";
-            const currentLimit = isVideo ? 15 * 1024 * 1024 : 5 * 1024 * 1024;
-            if (selected.fileSize > currentLimit) {
-                const sizeInMB = (selected.fileSize / (1024 * 1024)).toFixed(2);
-                Alert.alert("File Too Large", `This ${selected.type} is ${sizeInMB}MB. Max: ${isVideo ? '15MB' : '5MB'}.`);
-                return;
-            }
             setUploading(true);
             try {
                 const signRes = await apiFetch(`${API_BASE}/upload/sign`, { method: "POST" });
                 const signData = await signRes.json();
                 if (!signRes.ok) throw new Error("Signature fetch failed");
-                const formData = new FormData();
-                formData.append("file", { uri: selected.uri, type: isVideo ? "video/mp4" : "image/jpeg", name: isVideo ? "video.mp4" : "photo.jpg", });
-                formData.append("api_key", signData.apiKey);
-                formData.append("timestamp", signData.timestamp);
-                formData.append("signature", signData.signature);
-                formData.append("folder", "posts");
-                const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/${isVideo ? "video" : "image"}/upload`, { method: "POST", body: formData });
-                const cloudData = await cloudRes.json();
-                if (cloudRes.ok) {
-                    let finalUrl = cloudData.secure_url;
-                    const transform = isVideo ? "q_auto,vc_auto" : "f_auto,q_auto";
-                    finalUrl = finalUrl.replace("/upload/", `/upload/${transform}/`);
-                    setMediaUrl(finalUrl);
-                    setMediaType(isVideo ? "video" : "image");
-                    setPickedImage(true);
-                    Toast.show({ type: 'success', text1: 'Media attached successfully!' });
-                } else { throw new Error(cloudData.error?.message || "Cloudinary failed"); }
-            } catch (err) { console.error(err); Alert.alert("Error", "Upload failed: " + err.message); } finally { setUploading(false); }
+
+                const uploadedAssets = [];
+
+                // Loop through selected assets
+                for (const selected of result.assets) {
+                    const isVideo = selected.type === "video";
+                    const currentLimit = isVideo ? 15 * 1024 * 1024 : 5 * 1024 * 1024;
+
+                    if (selected.fileSize > currentLimit) {
+                        Alert.alert("File Too Large", `Skipping ${selected.type}. Max: ${isVideo ? '15MB' : '5MB'}.`);
+                        continue;
+                    }
+
+                    const formData = new FormData();
+                    formData.append("file", {
+                        uri: selected.uri,
+                        type: isVideo ? "video/mp4" : "image/jpeg",
+                        name: isVideo ? "video.mp4" : "photo.jpg",
+                    });
+                    formData.append("api_key", signData.apiKey);
+                    formData.append("timestamp", signData.timestamp);
+                    formData.append("signature", signData.signature);
+                    formData.append("folder", "posts");
+
+                    const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/${isVideo ? "video" : "image"}/upload`, {
+                        method: "POST",
+                        body: formData
+                    });
+
+                    const cloudData = await cloudRes.json();
+                    if (cloudRes.ok) {
+                        let finalUrl = cloudData.secure_url;
+                        const transform = isVideo ? "q_auto,vc_auto" : "f_auto,q_auto";
+                        finalUrl = finalUrl.replace("/upload/", `/upload/${transform}/`);
+
+                        uploadedAssets.push({ url: finalUrl, type: isVideo ? "video" : "image" });
+                    }
+                }
+
+                setMediaList(prev => [...prev, ...uploadedAssets]);
+                setPickedImage(true);
+                Toast.show({ type: 'success', text1: `${uploadedAssets.length} asset(s) linked!` });
+            } catch (err) {
+                console.error(err);
+                Alert.alert("Error", "Upload failed: " + err.message);
+            } finally {
+                setUploading(false);
+            }
         }
+    };
+
+    // 🔹 NEW: REMOVE MEDIA
+    const removeMedia = (index) => {
+        const updatedList = mediaList.filter((_, i) => i !== index);
+        setMediaList(updatedList);
+        if (updatedList.length === 0) setPickedImage(false);
     };
 
     const updateStreak = async (deviceId) => {
         if (!deviceId) throw new Error("Device ID is required");
         try {
-            const res = await apiFetch(`${API_BASE}/users/streak`, { method: "POST", body: JSON.stringify({ deviceId }), })
+            const res = await apiFetch(`/users/streak`, { method: "POST", body: JSON.stringify({ deviceId }), })
             if (!res.ok) { const error = await res.json(); throw new Error(error.message || "Failed to update streak"); }
             const data = await res.json();
             return data;
@@ -596,24 +638,18 @@ export default function AuthorDiaryDashboard() {
     }
     const { refreshStreak } = useStreak()
 
-    // 🔹 SUBMIT HANDLER WITH CLAN LOGIC
+    // 🔹 UPDATED: SUBMIT HANDLER
     const handleSubmit = async () => {
         if (!title.trim() || !message.trim()) { Alert.alert("Error", "Title and Message are required."); return; }
-
-        // Block submission if offline
-        if (isOfflineMode) { Alert.alert("Offline", "Cannot transmit data while offline. Draft saved."); return; }
+        if (isOfflineMode) { Alert.alert("Offline", "Cannot transmit data while offline."); return; }
 
         setSubmitting(true);
         try {
-            // 🔹 Construct Clan Data for Payload
             let finalCategory = category;
             let finalClanId = null;
 
             if (category === "Clan") {
-                // If Clan is selected, combine with subcategory (e.g., Clan-News)
-                // Using "Clan-SubCategory" format as requested
                 finalCategory = `Clan-${clanSubCategory}`;
-                // Set the clanId using the userClan tag
                 finalClanId = userClan?.tag;
             }
 
@@ -622,10 +658,13 @@ export default function AuthorDiaryDashboard() {
                 body: JSON.stringify({
                     title,
                     message,
-                    category: finalCategory, // Send the composed category
-                    clanId: finalClanId,     // Send the clan ID/Tag
-                    mediaUrl: mediaUrl || mediaUrlLink || null,
-                    mediaType: mediaUrl ? mediaType : (mediaUrlLink?.includes("video") ? "video" : "image"),
+                    category: finalCategory,
+                    clanId: finalClanId,
+                    // NEW: Send the full array
+                    media: mediaList,
+                    // BACKWARD COMPATIBILITY: Send first item as main media
+                    mediaUrl: mediaList.length > 0 ? mediaList[0].url : mediaUrlLink || null,
+                    mediaType: mediaList.length > 0 ? mediaList[0].type : (mediaUrlLink?.includes("video") ? "video" : "image"),
                     hasPoll,
                     pollMultiple,
                     pollOptions: hasPoll ? pollOptions.filter(opt => opt.trim() !== "").map(opt => ({ text: opt })) : [],
@@ -633,24 +672,22 @@ export default function AuthorDiaryDashboard() {
                     rewardToken
                 }),
             });
+
             const data = await response.json();
-            updateStreak(fingerprint);
             if (!response.ok) throw new Error(data.message || "Failed to create post");
 
-            // Remove draft after successful post
             await AsyncStorage.removeItem(`draft_${fingerprint}`);
-
             Alert.alert("Success", "Your entry has been submitted for approval!");
-            setRewardToken(null);
-            setCanPostAgain(false);
+
+            // Reset States
+            setMediaList([]);
             setTitle("");
             setMessage("");
-            setMediaUrl("");
             setMediaUrlLink("");
+            setPickedImage(false);
             mutateTodayPosts();
-            refreshStreak();
         } catch (err) { Alert.alert("Error", err.message); }
-        finally { setSubmitting(false); setPickedImage(false) }
+        finally { setSubmitting(false); }
     };
 
     // 6. Preview Logic
@@ -1080,8 +1117,7 @@ export default function AuthorDiaryDashboard() {
                                         </View>
                                     )}
                                 </View>
-
-                                {/* Media & URL */}
+                                {/* --- MEDIA & PREVIEW SECTION --- */}
                                 <View className="space-y-4">
                                     <TextInput
                                         placeholder="External Uplink (URL)"
@@ -1092,20 +1128,70 @@ export default function AuthorDiaryDashboard() {
                                         className="border-2 p-5 rounded-2xl text-white font-bold"
                                     />
 
-                                    <TouchableOpacity
-                                        onPress={pickImage}
-                                        style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
-                                        className="p-8 rounded-3xl items-center border-2 border-dashed"
-                                    >
-                                        {uploading ? <ActivityIndicator color="#2563eb" /> : (
-                                            <View className="items-center">
-                                                <Ionicons name="cloud-upload-outline" size={24} color={pickedImage ? "#22c55e" : "#475569"} />
-                                                <Text className={`text-[10px] font-black uppercase mt-2 ${pickedImage ? 'text-green-500' : 'text-gray-500'}`}>
-                                                    {pickedImage ? "Asset Linked Successfully" : "Sync Local Media File"}
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </TouchableOpacity>
+                                    {/* 🔹 MULTI-MEDIA CAROUSEL PREVIEW */}
+                                    {mediaList.length > 0 && (
+                                        <View className="mb-2">
+                                            <Text className="text-[9px] font-black uppercase text-gray-500 mb-3 ml-1">Linked Assets ({mediaList.length}/5)</Text>
+                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row py-2">
+                                                {mediaList.map((item, index) => (
+                                                    <View key={index} className="mr-3 relative">
+                                                        <View
+                                                            style={{ borderColor: THEME.border }}
+                                                            className="w-[200px] h-[200px] rounded-2xl overflow-hidden border-2 bg-gray-900 justify-center items-center"
+                                                        >
+                                                            {item.type === "video" ? (
+                                                                <Ionicons name="videocam" size={30} color={THEME.accent} />
+                                                            ) : (
+                                                                <Image source={{ uri: item.url }} className="w-full h-full" contentFit="cover" />
+                                                            )}
+                                                        </View>
+                                                        {/* Delete Button Badge */}
+                                                        <TouchableOpacity
+                                                            onPress={() => removeMedia(index)}
+                                                            className="absolute -top-2 -right-2 bg-red-600 w-6 h-6 rounded-full items-center justify-center border-2 border-black"
+                                                        >
+                                                            <Ionicons name="close" size={14} color="white" />
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                ))}
+
+                                                {/* Small "Add More" button if under limit */}
+                                                {mediaList.length < 5 && (
+                                                    <TouchableOpacity
+                                                        onPress={pickImage}
+                                                        style={{ borderColor: THEME.border, backgroundColor: THEME.card }}
+                                                        className="w-24 h-24 rounded-2xl border-2 border-dashed justify-center items-center"
+                                                    >
+                                                        <Ionicons name="add" size={24} color={THEME.accent} />
+                                                    </TouchableOpacity>
+                                                )}
+                                            </ScrollView>
+                                        </View>
+                                    )}
+
+                                    {/* 🔹 UPLOAD BUTTON (Hidden if list has items and you want them to use the carousel 'add' button, or keep as main trigger) */}
+                                    {mediaList.length === 0 && (
+                                        <TouchableOpacity
+                                            onPress={pickImage}
+                                            disabled={uploading}
+                                            style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
+                                            className="p-8 rounded-3xl items-center border-2 border-dashed"
+                                        >
+                                            {uploading ? (
+                                                <View className="items-center">
+                                                    <ActivityIndicator color={THEME.accent} />
+                                                    <Text className="text-[10px] font-black uppercase mt-2 text-blue-500">Uploading to Cloud...</Text>
+                                                </View>
+                                            ) : (
+                                                <View className="items-center">
+                                                    <Ionicons name="cloud-upload-outline" size={24} color={pickedImage ? "#22c55e" : "#475569"} />
+                                                    <Text className={`text-[10px] font-black uppercase mt-2 ${pickedImage ? 'text-green-500' : 'text-gray-500'}`}>
+                                                        {pickedImage ? "Assets Linked Successfully" : "Sync Local Media Files (Max 5)"}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
 
                                 {/* Poll Module */}

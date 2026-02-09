@@ -1,77 +1,130 @@
 import apiFetch from "@/utils/apiFetch";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from 'expo-notifications';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Platform } from "react-native";
 
 const StreakContext = createContext();
 const STREAK_CACHE_KEY = "streak_local_cache";
 const APP_SECRET = "thisismyrandomsuperlongsecretkey";
 
+// Set the handler so notifications show when the app is open
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 // --- UPDATED FUNCTION ---
-const scheduleStreakReminders = async (expiresAt) => {
+const scheduleStreakReminders = async (expiresAt, setScheduledList = null) => {
   if (!expiresAt) return;
   try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    // Permission Check (Critical for Android)
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      console.log("Failed to get push token for push notification!");
+      return;
+    }
+
+    // Create Channel for Android
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('streak-reminders', {
+        name: 'Streak Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+      });
+    }
+
     const expiryDate = new Date(expiresAt).getTime();
     const now = Date.now();
-
+    const GROUP_KEY = "com.oreblogda.STREAK_GROUP"
+    const CHANNEL_ID = "streak-reminders";
     // 1. 24 Hour Reminder
     const trigger24h = expiryDate - (24 * 60 * 60 * 1000);
     if (trigger24h > now) {
       await Notifications.scheduleNotificationAsync({
-        content: { 
-          title: "🔥 Streak at Risk!", 
-          body: "24 hours left to post!", 
-          data: { screen: 'CreatePost' } 
+        identifier: "streak-24h",
+        content: {
+          title: "🔥 Streak at Risk!",
+          body: "24 hours left to post!",
+          data: { screen: 'CreatePost' },
+          android: { channelId: CHANNEL_ID, groupKey: GROUP_KEY },
+          threadIdentifier: GROUP_KEY
         },
         trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE, // Fixed
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: new Date(trigger24h),
+          channelId: 'streak-reminders'
         },
       });
     }
-
     // 2. 2 Hour Reminder
     const trigger2h = expiryDate - (2 * 60 * 60 * 1000);
     if (trigger2h > now) {
       await Notifications.scheduleNotificationAsync({
-        content: { 
-          title: "⚠️ FINAL WARNING", 
-          body: "2 hours left! Post now!", 
-          sound: 'default', 
-          priority: 'high' 
+        identifier: "streak-2h",
+        content: {
+          title: "⚠️ FINAL WARNING",
+          body: "2 hours left! Post now!",
+          sound: 'default',
+          priority: 'high',
+          data: { screen: 'CreatePost' },
+          android: { channelId: CHANNEL_ID, groupKey: GROUP_KEY },
+          threadIdentifier: GROUP_KEY
         },
         trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE, // Fixed
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: new Date(trigger2h),
+          channelId: 'streak-reminders'
+        },
+      });
+    }
+    // 3. Expiration Notification
+    if (expiryDate > now) {
+      await Notifications.scheduleNotificationAsync({
+        identifier: "streak-lost",
+        content: {
+          title: "💀 Streak Lost",
+          body: "Your streak has expired.",
+          android: { channelId: CHANNEL_ID, groupKey: GROUP_KEY },
+          threadIdentifier: GROUP_KEY
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(expiryDate),
+          channelId: 'streak-reminders'
         },
       });
     }
 
-    // 3. Expiration Notification
-    if (expiryDate > now) {
-      await Notifications.scheduleNotificationAsync({
-        content: { title: "💀 Streak Lost", body: "Your streak has expired." },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE, // Fixed
-          date: new Date(expiryDate),
-        },
-      });
+    // Update the list if the setter was provided
+    if (setScheduledList) {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     }
-  } catch (e) { 
-    console.error("Notif Error:", e); 
+
+  } catch (e) {
+    console.error("Notif Error:", e);
   }
 };
 
 export function StreakProvider({ children }) {
   const [streakData, setStreakData] = useState({
-    streak: 0, 
-    lastPostDate: null, 
-    canRestore: false, 
+    streak: 0,
+    lastPostDate: null,
+    canRestore: false,
     recoverableStreak: 0,
     expiresAt: null
   });
   const [loading, setLoading] = useState(true);
+  const [scheduledList, setScheduledList] = useState([]);
+  const isScheduling = useRef(false);
 
   const fetchStreak = useCallback(async () => {
     try {
@@ -84,7 +137,7 @@ export function StreakProvider({ children }) {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "x-oreblogda-secret": APP_SECRET 
+          "x-oreblogda-secret": APP_SECRET
         }
       });
 
@@ -92,7 +145,12 @@ export function StreakProvider({ children }) {
         const data = await res.json();
         setStreakData(data);
         await AsyncStorage.setItem(STREAK_CACHE_KEY, JSON.stringify(data));
-        if (data.expiresAt) scheduleStreakReminders(data.expiresAt);
+
+        if (data.expiresAt && !isScheduling.current) {
+          isScheduling.current = true;
+          await scheduleStreakReminders(data.expiresAt, setScheduledList);
+          isScheduling.current = false;
+        }
       }
     } catch (e) {
       console.error("Streak Fetch Error:", e);
@@ -107,7 +165,11 @@ export function StreakProvider({ children }) {
       if (saved) {
         const parsed = JSON.parse(saved);
         setStreakData(parsed);
-        if (parsed.expiresAt) scheduleStreakReminders(parsed.expiresAt);
+        if (parsed.expiresAt && !isScheduling.current) {
+          isScheduling.current = true;
+          await scheduleStreakReminders(parsed.expiresAt, setScheduledList);
+          isScheduling.current = false;
+        }
       }
       fetchStreak();
     };
@@ -117,8 +179,9 @@ export function StreakProvider({ children }) {
   const value = useMemo(() => ({
     streak: streakData,
     loading,
-    refreshStreak: fetchStreak 
-  }), [streakData, loading, fetchStreak]);
+    refreshStreak: fetchStreak,
+    scheduledList, // To see your notifications in UI
+  }), [streakData, loading, fetchStreak, scheduledList]);
 
   return (
     <StreakContext.Provider value={value}>

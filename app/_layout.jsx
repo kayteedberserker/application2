@@ -6,11 +6,13 @@ import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as Updates from 'expo-updates';
 import { useColorScheme } from "nativewind";
-import { useEffect, useRef, useState } from "react";
-import { AppState, BackHandler, DeviceEventEmitter, Platform, StatusBar, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, BackHandler, DeviceEventEmitter, Platform, StatusBar, TouchableOpacity, View } from "react-native";
 import mobileAds, { AdEventType, InterstitialAd, MaxAdContentRating } from 'react-native-google-mobile-ads';
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from 'react-native-toast-message';
+// 🔹 NOTIFEE IMPORT
+import notifee, { AndroidGroupAlertBehavior, AndroidImportance, EventType } from '@notifee/react-native';
 
 import AnimeLoading from "../components/AnimeLoading";
 import { loadAppOpenAd, showAppOpenAd } from "../components/appOpenAd";
@@ -31,44 +33,85 @@ const INTERSTITIAL_ID = AdConfig.interstitial;
 
 let lastShownTime = Date.now() - (COOLDOWN_MS - FIRST_AD_DELAY_MS);
 let interstitial = null;
-let interstitialLoaded = false;
+let interstitialLoaded = false
 
 // 🔹 NOTIFICATION HANDLER
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-    }),
+    handleNotification: async (notification) => {
+        const { title, body, data } = notification.request.content;
+        const groupId = data?.groupId;
+
+        if (Platform.OS === 'android' && groupId) {
+            try {
+                const channelId = 'default';
+                const NOTIFICATION_COLOR = '#FF231F7C';
+
+                await notifee.displayNotification({
+                    id: groupId,
+                    title: "Recent Votes",
+                    subtitle: 'Activity',
+                    android: {
+                        channelId,
+                        groupKey: groupId,
+                        groupSummary: true,
+                        groupAlertBehavior: AndroidGroupAlertBehavior.CHILDREN,
+                        pressAction: { id: 'default' },
+                        smallIcon: 'ic_notification',
+                        color: NOTIFICATION_COLOR,
+                    },
+                });
+
+                await notifee.displayNotification({
+                    title: title,
+                    body: body,
+                    data: data,
+                    android: {
+                        channelId,
+                        groupKey: groupId,
+                        groupSummary: false,
+                        pressAction: { id: 'default' },
+                        smallIcon: 'ic_notification',
+                        color: NOTIFICATION_COLOR,
+                    },
+                });
+
+                return {
+                    shouldShowBanner: false,
+                    shouldPlaySound: false,
+                    shouldSetBadge: false,
+                };
+            } catch (error) {
+                console.error("Notifee Display Error:", error);
+            }
+        }
+
+        return {
+            shouldShowBanner: true,
+            shouldPlaySound: true,
+            shouldSetBadge: false,
+        };
+    },
 });
 
-// 🔹 HELPER: Load Interstitial
 const loadInterstitial = () => {
     if (interstitial) return;
-
     const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_ID, {
         requestNonPersonalizedAdsOnly: true,
     });
-
     ad.addAdEventListener(AdEventType.LOADED, () => {
         interstitialLoaded = true;
-        console.log("✅ Interstitial Loaded");
     });
-
     ad.addAdEventListener(AdEventType.CLOSED, () => {
         interstitialLoaded = false;
         interstitial = null;
         lastShownTime = Date.now();
         loadInterstitial();
     });
-
     ad.addAdEventListener(AdEventType.ERROR, (err) => {
-        console.log("❌ Interstitial Error: ", err);
         interstitial = null;
         interstitialLoaded = false;
         setTimeout(loadInterstitial, 30000);
     });
-
     ad.load();
     interstitial = ad;
 };
@@ -81,6 +124,11 @@ async function registerForPushNotificationsAsync() {
             importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#FF231F7C',
+        });
+        await notifee.createChannel({
+            id: 'default',
+            name: 'Default Channel',
+            importance: AndroidImportance.HIGH,
         });
     }
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -117,11 +165,46 @@ function RootLayoutContent() {
     const hasHandledRedirect = useRef(false);
     const hasShownWelcomeAd = useRef(false);
 
-    // 🔹 FIX: Ref to track the current pathname without re-triggering listeners
     const currentPathRef = useRef(pathname);
     useEffect(() => {
         currentPathRef.current = pathname;
     }, [pathname]);
+
+    // --- 🔹 SMART ROUTING ENGINE ---
+    const processRouting = useCallback((data) => {
+        if (!data) return;
+
+        const targetPostId = data.postId || data.id || data.body?.postId;
+        const targetType = data.type || data.body?.type;
+        const targetDiscussionId = data.discussion || data.commentId;
+
+        let targetPath = "";
+        if (targetType === "open_diary" || targetType === "diary") {
+            targetPath = "/authordiary";
+        } else if (targetPostId) {
+            targetPath = `/post/${targetPostId}`;
+        } else if(targetType === "version_update") {
+            targetPath = "/";
+        }
+
+        if (!targetPath) return;
+
+        const currentPathBase = currentPathRef.current.split('?')[0];
+        const isOnSamePage = currentPathBase === targetPath;
+
+        if (isOnSamePage) {
+            if (targetDiscussionId) {
+                DeviceEventEmitter.emit("openCommentSection", { discussionId: targetDiscussionId });
+            }
+            return;
+        }
+
+        hasHandledRedirect.current = true;
+        const finalUrl = targetDiscussionId ? `${targetPath}?discussionId=${targetDiscussionId}` : targetPath;
+        console.log(finalUrl);
+
+        router.push(finalUrl);
+    }, [router]);
 
     // --- 1. GLOBAL NAVIGATION & BACK HANDLER ---
     useEffect(() => {
@@ -165,72 +248,88 @@ function RootLayoutContent() {
         };
     }, []);
 
-    // --- 2. AD INITIALIZATION ---
+    // --- 2. AD INITIALIZATION (Updated with Adapter Logging) ---
     useEffect(() => {
         if (Platform.OS === 'web') {
             setIsAdReady(true);
             return;
         }
-
         const runMediationInit = async () => {
             try {
-                setAdStatusLog("Configuring Ads...");
                 await mobileAds().setRequestConfiguration({
                     maxAdContentRating: MaxAdContentRating.G,
                     tagForChildDirectedTreatment: false,
                 });
-
-                setAdStatusLog("Connecting to Mediation...");
+                
+                // This initializes AdMob AND all included mediation adapters
                 const adapterStatuses = await mobileAds().initialize();
-                
-                // Construct a visual log for the loading screen
-                const statusSummary = Object.entries(adapterStatuses)
-                    .map(([name, status]) => `${name}: ${status.state === 1 ? '✅' : '❌'}`)
-                    .join(' | ');
-                
-                setAdStatusLog(statusSummary || "Ads Engine Ready");
+                // console.log("AdMob Adapters Initialized:", adapterStatuses);
 
                 if (typeof loadAppOpenAd === 'function') loadAppOpenAd();
                 if (typeof loadInterstitial === 'function') loadInterstitial();
-
-                // Give the user a moment to see the status if they want
                 setTimeout(() => setIsAdReady(true), 1000);
             } catch (e) {
-                setAdStatusLog("Ad Init Error: " + e.message);
+                console.error("AdMob Init Error:", e);
                 setTimeout(() => setIsAdReady(true), 2000);
             }
         };
-
         runMediationInit();
     }, []);
 
     // --- 3. WELCOME AD ---
     useEffect(() => {
         if (appReady && isAdReady && !hasShownWelcomeAd.current) {
-            const adShown = showAppOpenAd();
-            if (adShown) {
+            if (showAppOpenAd()) {
                 hasShownWelcomeAd.current = true;
-            } else {
-                const retryTimeout = setTimeout(() => {
-                    if (showAppOpenAd()) hasShownWelcomeAd.current = true;
-                }, 2000);
-                return () => clearTimeout(retryTimeout);
             }
         }
     }, [appReady, isAdReady]);
 
-    // --- 4. DEEP LINKING ---
-    const url = Linking.useURL();
+    // --- 4. DEEP LINKING (Event Based - Fixes Duplicates & Warm Start Ghosting) ---
     useEffect(() => {
-        if (url && !isSyncing && !isUpdating && !hasHandledRedirect.current) {
-            const { path } = Linking.parse(url);
+        const handleUrl = (url) => {
+            if (!url || isSyncing || isUpdating) return;
+
+            const parsed = Linking.parse(url);
+            const { path, queryParams } = parsed;
+
             if (path && path !== "/") {
-                const targetPath = path.startsWith('/') ? path : `/${path}`;
-                hasHandledRedirect.current = true;
-                setTimeout(() => router.replace(targetPath), 500);
+                const segments = path.split('/');
+                const pathId = segments.pop();
+                const type = segments.includes('post') ? 'post_detail' : null;
+                if (path.includes('/post/')) {
+                    processRouting({
+                        postId: pathId,
+                        type: type,
+                        ...queryParams
+                    });
+                } else {
+                    const currentPathBase = currentPathRef.current
+                    
+                    if (currentPathBase == `/${path}`) {
+                        console.log("Youre in the same page not pushing");
+                        return
+                    }
+                    router.push(path)
+                }
+
             }
-        }
-    }, [url, isSyncing, isUpdating]);
+        };
+
+        // Check if app was opened via a link (Initial Cold Start)
+        Linking.getInitialURL().then((initialUrl) => {
+            if (initialUrl) {
+                handleUrl(initialUrl);
+            }
+        });
+
+        // Listen for new links while app is open (Handles Duplicates perfectly)
+        const subscription = Linking.addEventListener('url', (event) => {
+            handleUrl(event.url);
+        });
+
+        return () => subscription.remove();
+    }, [isSyncing, isUpdating, processRouting]);
 
     // --- 5. EAS UPDATES ---
     useEffect(() => {
@@ -280,37 +379,52 @@ function RootLayoutContent() {
         const notificationId = response?.notification?.request?.identifier;
         if (!notificationId || lastHandledNotificationId.current === notificationId) return;
         lastHandledNotificationId.current = notificationId;
+        const data = response?.notification?.request?.content?.data || {};
+        console.log(data);
+        
+        processRouting(data);
+    };
 
-        const content = response?.notification?.request?.content;
-        const data = content?.data || {};
-        const targetPostId = data?.postId || data?.body?.postId || data?.id;
-        const targetType = data?.type || data?.body?.type;
-
-        if (targetPostId) {
-            hasHandledRedirect.current = true;
-            router.push(`/post/${targetPostId}`);
-        } else if (targetType === "open_diary" || targetType === "diary") {
-            hasHandledRedirect.current = true;
-            router.push("/authordiary");
+    const handleNotifeeInteraction = async (detail) => {
+        const { notification, pressAction } = detail;
+        if (pressAction?.id === 'default' && notification?.data) {
+            processRouting(notification.data);
         }
     };
 
     useEffect(() => {
         if (isSyncing || isUpdating) return;
+
+        const unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+            if (type === EventType.PRESS) {
+                handleNotifeeInteraction(detail);
+            }
+        });
+
+        notifee.getInitialNotification().then(initialNotification => {
+            if (initialNotification) {
+                handleNotifeeInteraction(initialNotification);
+            }
+        });
+
         Notifications.getLastNotificationResponseAsync().then(response => {
             if (response && !hasHandledRedirect.current) {
                 handleNotificationNavigation(response);
             }
         });
+
         const responseSub = Notifications.addNotificationResponseReceivedListener(response => {
             handleNotificationNavigation(response);
         });
-        return () => responseSub.remove();
+
+        return () => {
+            unsubscribeNotifee();
+            responseSub.remove();
+        };
     }, [isSyncing, isUpdating]);
 
     useEffect(() => { if (appReady || fontError) SplashScreen.hideAsync(); }, [appReady, fontError]);
 
-    // 🔹 DEBUG MENU TRIGGER: Tap 5 times to see the Ad Inspector
     const handleDebugTap = () => {
         const next = debugTapCount + 1;
         if (next >= 5) {
@@ -323,14 +437,10 @@ function RootLayoutContent() {
 
     if (!fontsLoaded || isSyncing || isUpdating || !isAdReady) {
         return (
-            <TouchableOpacity 
-                activeOpacity={1} 
-                onPress={handleDebugTap} 
-                style={{ flex: 1 }}
-            >
+            <TouchableOpacity activeOpacity={1} onPress={handleDebugTap} style={{ flex: 1 }}>
                 <AnimeLoading
                     message={isUpdating ? "UPDATING_CORE" : "LOADING_PAGE"}
-                    subMessage={isUpdating ? "Updating system configurations..." : adStatusLog}
+                    subMessage={isUpdating ? "Updating system configurations..." : "Fetching Otaku Archives"}
                 />
             </TouchableOpacity>
         );
@@ -349,14 +459,6 @@ function RootLayoutContent() {
         </View>
     );
 }
-
-const styles = StyleSheet.create({
-    debugButton: {
-        position: 'absolute', bottom: 100, right: 20, backgroundColor: '#E6F4FE',
-        paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#2196F3', elevation: 5, zIndex: 999
-    },
-    debugText: { color: '#2196F3', fontSize: 12, fontWeight: 'bold' }
-});
 
 export default function RootLayout() {
     return (

@@ -1,5 +1,5 @@
 import { useColorScheme } from "nativewind";
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Animated, DeviceEventEmitter, Dimensions, FlatList, View } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PostsViewer from "./../../components/PostViewer";
@@ -17,6 +17,29 @@ const CHANNELS = [
     { id: 'gaming', title: 'Gaming', type: 'category' },
 ];
 
+// 🔹 Optimization: Separate Component to prevent parent re-renders
+const Scene = memo(({ item, index, activeIndex }) => {
+    // Only render the component if it's the active one or the immediate neighbor (pre-loading)
+    const shouldRender = Math.abs(index - activeIndex) <= 1;
+
+    return (
+        <View style={{ width, flex: 1 }}>
+            {shouldRender ? (
+                item.type === 'feed' ? (
+                    <PostsViewer />
+                ) : (
+                    <CategoryPage forcedId={item.id} />
+                )
+            ) : (
+                // Placeholder to keep the list layout stable without heavy logic
+                <View className="flex-1 items-center justify-center">
+                    <View className="w-10 h-10 border-2 border-blue-600/20 rounded-full" />
+                </View>
+            )}
+        </View>
+    );
+});
+
 export default function HomePage() {
     const insets = useSafeAreaInsets();
     const { colorScheme } = useColorScheme();
@@ -26,7 +49,6 @@ export default function HomePage() {
     const scrollX = useRef(new Animated.Value(0)).current;
     const [activeIndex, setActiveIndex] = useState(0);
 
-    // 🔹 Listen for Nav Taps from the Layout
     useEffect(() => {
         const sub = DeviceEventEmitter.addListener("scrollToIndex", (index) => {
             flatListRef.current?.scrollToIndex({ index, animated: true });
@@ -34,19 +56,12 @@ export default function HomePage() {
         return () => sub.remove();
     }, []);
 
-    const renderItem = ({ item }) => (
-        <View style={{ width }}>
-            {item.type === 'feed' ? (
-                <PostsViewer />
-            ) : (
-                <CategoryPage forcedId={item.id} />
-            )}
-        </View>
+    const renderItem = ({ item, index }) => (
+        <Scene item={item} index={index} activeIndex={activeIndex} />
     );
 
     return (
         <View className={`flex-1 ${isDark ? "bg-[#050505]" : "bg-white"}`}>
-            {/* Background Decor */}
             <View 
                 pointerEvents="none"
                 className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl" 
@@ -67,7 +82,6 @@ export default function HomePage() {
                 onMomentumScrollEnd={(e) => {
                     const index = Math.round(e.nativeEvent.contentOffset.x / width);
                     setActiveIndex(index);
-                    // 🔹 Sync the Layout's Nav with this swipe
                     DeviceEventEmitter.emit("pageSwiped", index);
                 }}
                 getItemLayout={(_, index) => ({
@@ -75,15 +89,15 @@ export default function HomePage() {
                     offset: width * index,
                     index,
                 })}
-                removeClippedSubviews={true}
+                // 🔹 Performance Settings
+                removeClippedSubviews={true} 
                 initialNumToRender={1}
-                maxToRenderPerBatch={2}
-                windowSize={3}
+                maxToRenderPerBatch={1}
+                windowSize={2} 
                 scrollEventThrottle={16}
                 decelerationRate="fast"
             />
 
-            {/* Tactical Footer Overlay */}
             <View 
                 className="absolute left-6 flex-row items-center gap-2"
                 style={{ bottom: insets.bottom + 5, opacity: 0.3 }}

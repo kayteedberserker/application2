@@ -58,7 +58,9 @@ export default function SimilarPosts({ category, currentPostId }) {
 
               {/* Ad placement every 2 posts */}
               {(index + 1) % 3 === 0 && (
-                <NativeAdPostStyle isDark={isDark} />
+                <View className={'min-w-[270px]'}>
+                  <NativeAdPostStyle isDark={isDark} />
+                </View>
               )}
             </React.Fragment>
           );
