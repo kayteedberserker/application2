@@ -4,7 +4,7 @@ const APP_SECRET = "thisismyrandomsuperlongsecretkey";
 
 export const apiFetch = async (endpoint, options = {}) => {
   // 1. Fix URL construction
-  const baseUrl = "http://10.193.200.121:3000/api"; // Updated to your production URL
+  const baseUrl = "http://oreblogda.com/api"; // Updated to your production URL
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${cleanEndpoint}`;
   
