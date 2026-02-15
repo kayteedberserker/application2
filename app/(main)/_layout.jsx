@@ -54,21 +54,19 @@ export default function MainLayout() {
             tension: 40,
         }).start();
     }, [showClanMenu]);
-
+    const [userInClan, setUserInClan] = useState(false);
     const handleClanPress = async () => {
-    try {
-        const userClanData = await AsyncStorage.getItem('userClan');
-        // If user is in a clan, toggle the menu showing Profile, Discover, and War
-        if (userClanData) {
+        try {
+            const userClanData = await AsyncStorage.getItem('userClan');
+            // If user is in a clan, toggle the menu showing Profile, Discover, and Wa  
+            if (userClanData) {
+                setUserInClan(true)
+            }
             setShowClanMenu(!showClanMenu);
-        } else {
-            // If not in a clan, just take them to discovery
-            DeviceEventEmitter.emit("navigateSafely", "/clans/discover");
+        } catch (e) {
+            DeviceEventEmitter.emit("navigateSafely", "/screens/discover");
         }
-    } catch (e) {
-        DeviceEventEmitter.emit("navigateSafely", "/clans/discover");
-    }
-};
+    };
 
     const translateY_1 = animValue.interpolate({
         inputRange: [0, 1],
@@ -165,15 +163,18 @@ export default function MainLayout() {
             DeviceEventEmitter.emit("scrollToIndex", 0);
             return;
         }
-        
+
         DeviceEventEmitter.emit("navigateSafely", route);
     };
 
     if (contextLoading) {
         return <AnimeLoading message="Loading Page" subMessage="Syncing Account" />;
     }
-
-    if (!contextLoading && !user) {
+    const userAvailable = async () => {
+        const userAvailable = await AsyncStorage.getItem("mobileUser");
+        return userAvailable !== null;
+    }
+    if (!contextLoading && !userAvailable()) {
         return <Redirect href="/screens/FirstLaunchScreen" />;
     }
 
@@ -289,7 +290,7 @@ export default function MainLayout() {
                     </TouchableOpacity>
                 </Animated.View>
 
-                <Animated.View style={{
+                {userInClan && <Animated.View style={{
                     opacity,
                     transform: [{ translateY: translateY_2 }, { scale }],
                     marginBottom: 10
@@ -305,6 +306,7 @@ export default function MainLayout() {
                         <Ionicons name="shield" size={20} color="#fff" />
                     </TouchableOpacity>
                 </Animated.View>
+                }
 
                 <Animated.View style={{
                     opacity,
@@ -314,7 +316,7 @@ export default function MainLayout() {
                     <TouchableOpacity
                         onPress={() => {
                             setShowClanMenu(false);
-                            navigateTo("/clans/discover");
+                            navigateTo("/screens/discover");
                         }}
                         activeOpacity={0.8}
                         style={[styles.subFab, { backgroundColor: isDark ? "#1e293b" : "#475569" }]}
@@ -328,9 +330,9 @@ export default function MainLayout() {
                         onPress={handleBackToTop}
                         activeOpacity={0.7}
                         style={[
-                            styles.mainFab, 
-                            { 
-                                marginBottom: 12, 
+                            styles.mainFab,
+                            {
+                                marginBottom: 12,
                                 backgroundColor: isDark ? "#111111" : "#f8fafc",
                                 borderColor: isDark ? "#1e293b" : "#e2e8f0",
                             }
@@ -348,8 +350,8 @@ export default function MainLayout() {
                         {
                             borderColor: showClanMenu ? (isDark ? "#fff" : "#3b82f6") : (isDark ? "#1e293b" : "#e2e8f0"),
                             borderWidth: 2,
-                            backgroundColor: showClanMenu 
-                                ? (isDark ? "#1e293b" : "#3b82f6") 
+                            backgroundColor: showClanMenu
+                                ? (isDark ? "#1e293b" : "#3b82f6")
                                 : (isDark ? "#111111" : "#f8fafc")
                         }
                     ]}

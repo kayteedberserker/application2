@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Modal, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MobileAds } from 'react-native-google-mobile-ads';
+import { useEffect, useState } from 'react';
+import { Alert, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
+// import { MobileAds } from 'react-native-google-mobile-ads';
 
 const SECRET_PIN = "1807"; // 👈 Set your secret PIN here
 const BAN_KEY = "@debug_access_banned";

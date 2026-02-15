@@ -34,19 +34,10 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            {
-              "scheme": "https",
-              "host": "oreblogda.com",
-              "pathPrefix": "/"
-            },
-            {
-              "scheme": "oreblogda"
-            }
+            { "scheme": "https", "host": "oreblogda.com", "pathPrefix": "/" },
+            { "scheme": "oreblogda" }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": [ "BROWSABLE", "DEFAULT" ]
         }
       ],
       "config": {
@@ -66,27 +57,20 @@
           "image": "./assets/images/myicon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/images/myicon.png",
+            "backgroundColor": "#050505"
+          }
         }
       ],
       "expo-secure-store",
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-8021671365048667~3586113443",
-          "delayAppMeasurementInit": true
-        }
-      ],
       [
         "expo-build-properties",
         {
           "android": {
             "newArchEnabled": true,
-            "minSdkVersion": 24,
-            "extraMavenRepos": [
-              "https://android-sdk.is.com/",
-              "https://unity3d.jfrog.io/artifactory/unity-ads-android-master"
-            ]
+            "minSdkVersion": 24
           }
         }
       ]
@@ -97,9 +81,7 @@
     },
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "b22841d4-0736-4aa0-89d2-d9a48af0defc"
-      }
+      "eas": { "projectId": "b22841d4-0736-4aa0-89d2-d9a48af0defc" }
     },
     "runtimeVersion": "v2_global",
     "updates": {

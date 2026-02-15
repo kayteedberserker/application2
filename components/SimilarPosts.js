@@ -3,7 +3,6 @@ import React, { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import useSWR from "swr";
 import apiFetch from "../utils/apiFetch";
-import { NativeAdPostStyle } from "./NativeAd";
 import PostCard from "./PostCard";
 
 const API_URL = "https://oreblogda.com";
@@ -57,11 +56,11 @@ export default function SimilarPosts({ category, currentPostId }) {
               </View>
 
               {/* Ad placement every 2 posts */}
-              {(index + 1) % 3 === 0 && (
+              {/* {(index + 1) % 3 === 0 && (
                 <View className={'min-w-[270px]'}>
-                  <NativeAdPostStyle isDark={isDark} />
+                  <AppBanner size="MEDIUM_RECTANGLE" />
                 </View>
-              )}
+              )} */}
             </React.Fragment>
           );
         })}

@@ -1,92 +1,145 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Text,
+  View
+} from 'react-native';
+import { LevelPlayAdSize, LevelPlayBannerAdView } from 'unity-levelplay-mediation';
 import { AdConfig } from '../utils/AdConfig';
 
-const BANNER_ID = AdConfig.banner;
+const BANNER_ID = AdConfig.banner || "97tambjxr88508m5";
 
-const AppBanner = ({ size = BannerAdSize.MEDIUM_RECTANGLE }) => {
-  const [failed, setFailed] = useState(false);
+const AppBanner = ({ size = 'MREC' }) => {
   const [loaded, setLoaded] = useState(false);
-  const [retryKey, setRetryKey] = useState(0); 
+  const [shouldRender, setShouldRender] = useState(false);
+
+  const bannerAdViewRef = useRef(null);
+  const isInitialLoadTriggered = useRef(false);
   const retryTimer = useRef(null);
 
-  // Determine fixed height based on size to prevent layout jumping/flicking
-  const adDimensions = useMemo(() => {
-    switch (size) {
-      case BannerAdSize.MEDIUM_RECTANGLE:
-        return { height: 250, minWidth: 300 };
-      case BannerAdSize.FULL_BANNER:
-        return { height: 60, minWidth: '100%' };
-      case BannerAdSize.BANNER:
-        return { height: 50, minWidth: '100%' };
-      default:
-        return { height: 50, minWidth: '100%' };
+  const layout = useMemo(() => {
+    const s = size.toUpperCase();
+    if (s === 'BANNER') return { sdkSize: LevelPlayAdSize.BANNER, width: 320, height: 50 };
+    if (s === 'LARGE') return { sdkSize: LevelPlayAdSize.LARGE, width: 320, height: 90 };
+    return { sdkSize: LevelPlayAdSize.MEDIUM_RECTANGLE, width: 300, height: 250 };
+  }, [size]);
+
+  const loadAdInternal = useCallback(() => {
+    // 🛑 Optimization: Don't load if ref isn't ready or if we've already started a load
+    if (!bannerAdViewRef.current || isInitialLoadTriggered.current) {
+        return;
+    }
+
+    try {
+      console.log(`[AppBanner] 🚀 Loading ${size} ad...`);
+      isInitialLoadTriggered.current = true;
+      bannerAdViewRef.current.loadAd();
+    } catch (error) {
+      console.error("[AppBanner] Load Error:", error);
+      isInitialLoadTriggered.current = false;
     }
   }, [size]);
 
-  useEffect(() => {
-    return () => {
+  const adListener = useMemo(() => ({
+    onAdLoaded: (adInfo) => {
+      console.log(`[AppBanner] ✅ LOADED: ${size}`);
+      setLoaded(true);
       if (retryTimer.current) clearTimeout(retryTimer.current);
-    };
-  }, []);
+    },
+    onAdLoadFailed: (error) => {
+      console.error(`[AppBanner] ❌ FAILED: ${JSON.stringify(error)}`);
+      setLoaded(false);
+      isInitialLoadTriggered.current = false; // Reset so retry can work
+      
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      // 📉 DATA SAVER: Wait 60 seconds before retrying to save user data/bandwidth
+      retryTimer.current = setTimeout(() => {
+        loadAdInternal();
+      }, 60000); 
+    },
+    onAdClicked: (adInfo) => console.log(`[AppBanner] 🖱️ Ad Clicked`),
+    onAdDisplayed: (adInfo) => console.log("[AppBanner] 👁️ Impression Recorded"),
+    onAdDisplayFailed: (adInfo, error) => {
+        console.log(`[AppBanner] ⚠️ Display Failed:`);
+        isInitialLoadTriggered.current = false;
+    },
+    onAdExpanded: (adInfo) => console.log("[AppBanner] ↕️ Expanded"),
+    onAdCollapsed: (adInfo) => console.log("[AppBanner] ↔️ Collapsed"),
+    onAdLeftApplication: (adInfo) => console.log("[AppBanner] 💨 Left Application"),
+  }), [size, loadAdInternal]);
 
-  const handleAdFailed = (error) => {
-    setLoaded(false);
+  useEffect(() => {
+    setShouldRender(true);
+
+    // Initial load trigger with a slight delay to let UI threads breathe
+    const initLoadTimer = setTimeout(() => {
+        loadAdInternal();
+    }, 1000);
     
-    if (retryTimer.current) clearTimeout(retryTimer.current);
-    retryTimer.current = setTimeout(() => {
-      setFailed(false);
-      setRetryKey(prev => prev + 1);
-    }, 15000); 
-  };
-  
+    return () => {
+      clearTimeout(initLoadTimer);
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      if (bannerAdViewRef.current) {
+        // 🧹 MEMORY CLEANUP: Crucial to prevent lag when navigating away
+        bannerAdViewRef.current.destroy();
+        bannerAdViewRef.current = null;
+      }
+    };
+  }, []); // Removed loadAdInternal from deps to ensure useEffect only runs ONCE on mount
+
+  if (Platform.OS === 'web') return null;
+
   return (
     <View 
       style={{  
-        width: '150%', 
+        width: '100%', 
         alignItems: 'center', 
         justifyContent: 'center',
-        marginVertical: 10,
-        // CRITICAL: Set fixed height before loading to stop flickering
-        height: adDimensions.height,
-        backgroundColor: 'transparent',
-        borderRadius: 10,
-        overflow: 'hidden'
+        marginVertical: 15,
+        minHeight: layout.height, 
       }}
     >
-      {/* 🔹 LOADING ANIMATION: Centered inside the reserved space */}
-      {!loaded && !failed && (
+      {/* LOADING STATE UI */}
+      {!loaded && (
         <View style={{ 
           position: 'absolute', 
-          height: adDimensions.height, 
-          width: '100%', 
+          height: layout.height, 
+          width: layout.width, 
           justifyContent: 'center', 
           alignItems: 'center',
-          backgroundColor: 'rgba(0,0,0,0.03)',
-          borderRadius: 10
+          backgroundColor: 'rgba(10, 10, 10, 0.8)', // Darker background saves OLED battery
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: 'rgba(59, 130, 246, 0.2)',
         }}>
           <ActivityIndicator size="small" color="#3b82f6" />
+          <Text style={{ fontSize: 8, color: '#3b82f6', marginTop: 8, fontWeight: '900', letterSpacing: 2 }}>
+            NEURAL_LINK_ESTABLISHING...
+          </Text>
         </View>
       )}
 
-      <BannerAd
-        key={retryKey} 
-        unitId={BANNER_ID}
-        size={size}
-        requestOptions={{
-          requestNonPersonalizedAdsOnly: true,
-        }}
-        onAdLoaded={() => {
-          setLoaded(true);
-          setFailed(false);
-          if (retryTimer.current) clearTimeout(retryTimer.current);
-          if (__DEV__) console.log(`Banner Loaded: ${size}`);
-        }}
-        onAdFailedToLoad={(error) => {
-          handleAdFailed(error);
-        }}
-      />
+      {/* AD VIEW CONTAINER */}
+      <View style={{ width: layout.width, height: layout.height, opacity: loaded ? 1 : 0 }}>
+        {shouldRender && (
+          <LevelPlayBannerAdView
+            key={`banner_${size}_${BANNER_ID}`} 
+            ref={bannerAdViewRef}
+            adUnitId={BANNER_ID}
+            adSize={layout.sdkSize}
+            placementName={size === 'MREC' ? 'DefaultMREC' : 'DefaultBanner'} 
+            listener={adListener}
+            onLayout={(e) => {
+              // Safety fallback only
+              if (!isInitialLoadTriggered.current) {
+                  loadAdInternal();
+              }
+            }}
+            style={{ width: layout.width, height: layout.height }}
+          />
+        )}
+      </View>
     </View>
   );
 };
