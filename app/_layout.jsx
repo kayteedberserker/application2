@@ -18,11 +18,13 @@ import Toast from 'react-native-toast-message';
 
 import AnimeLoading from "../components/AnimeLoading";
 import ReviewGate from "../components/ReviewGate";
+import ProgressModal from "../components/ProgressModal";
 import { AlertProvider } from '../context/AlertContext';
 import { ClanProvider } from "../context/ClanContext";
 import { CoinProvider } from "../context/CoinContext";
 import { EventProvider } from "../context/EventContext";
 import { StreakProvider, useStreak } from "../context/StreakContext";
+import { UploadProgressProvider, useUploadProgress } from "../context/UploadProgressContext";
 import { UserProvider, useUser } from "../context/UserContext";
 import apiFetch from "../utils/apiFetch";
 import "./globals.css";
@@ -395,6 +397,9 @@ function RootLayoutContent() {
         );
     }
 
+    // Get upload progress from context
+    const { uploadProgress } = useUploadProgress();
+
     return (
         <View key={colorScheme} className="flex-1 bg-white dark:bg-gray-900">
             <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#0a0a0a" : "#ffffff"} />
@@ -407,6 +412,7 @@ function RootLayoutContent() {
             />
             <ReviewGate />
             <Toast />
+            <ProgressModal visible={uploadProgress.isVisible} progress={uploadProgress} />
         </View>
     );
 }
@@ -420,7 +426,9 @@ export default function RootLayout() {
                         <ClanProvider>
                             <CoinProvider>
                                 <EventProvider>
-                                    <RootLayoutContent />
+                                    <UploadProgressProvider>
+                                        <RootLayoutContent />
+                                    </UploadProgressProvider>
                                 </EventProvider>
                             </CoinProvider>
                         </ClanProvider>

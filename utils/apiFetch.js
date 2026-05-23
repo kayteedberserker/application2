@@ -18,7 +18,7 @@ export const setSessionExpiredHandler = (handler) => { onSessionExpired = handle
  * 🔄 Silent Refresh Logic (With Promise Locking)
  */
 const attemptTokenRefresh = async () => {
-  const baseUrl = !__DEV__ ? "https://oreblogda.com/api" : "http://10.46.182.121:3000/api"
+  const baseUrl = !__DEV__ ? "https://oreblogda.com/api" : "http://10.244.80.121:3000/api"
 
   // 🛡️ LOCK: If a refresh is already happening, return the existing promise 
   if (refreshPromise) {
@@ -96,15 +96,59 @@ const attemptTokenRefresh = async () => {
 };
 
 /**
+ * � UPLOAD PROGRESS WRAPPER
+ * Wraps FormData with progress tracking capability
+ */
+export const uploadWithProgress = async (formData, onProgress) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          onProgress({
+            totalBytesWritten: e.loaded,
+            totalBytesExpectedToWrite: e.total,
+            percentage: percentComplete,
+          });
+        }
+      });
+    }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch (e) {
+          resolve(xhr.responseText);
+        }
+      } else {
+        reject(new Error(`Upload failed with status ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Upload error')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+
+    xhr.open('POST', url);
+    xhr.send(formData);
+  });
+};
+
+/**
  * 🛡️ THE SYSTEM - SECURE API UPLINK
  */
 export const apiFetch = async (endpoint, options = {}) => {
-  const baseUrl = !__DEV__ ? "https://oreblogda.com/api" : "http://10.46.182.121:3000/api"
+  const baseUrl = !__DEV__ ? "https://oreblogda.com/api" : "http://10.244.80.121:3000/api"
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
   const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${cleanEndpoint}`
 
   const method = (options.method || 'GET').toUpperCase();
   const token = await SecureStore.getItemAsync('userToken');
+  const onProgress = options.onProgress; // Extract progress callback
 
   // Build Metadata Headers
   const headers = {
@@ -131,6 +175,9 @@ export const apiFetch = async (endpoint, options = {}) => {
     headers,
     body: (isObject && !isFormData) ? JSON.stringify(options.body) : options.body
   };
+
+  // Remove onProgress from fetchOptions to avoid passing it to fetch
+  delete fetchOptions.onProgress;
 
   try {
     const response = await fetch(url, fetchOptions);

@@ -31,6 +31,7 @@ import { useAlert } from "../../context/AlertContext";
 import { useClan } from "../../context/ClanContext";
 import { useCoins } from "../../context/CoinContext";
 import { useStreak } from "../../context/StreakContext";
+import { useUploadProgress } from "../../context/UploadProgressContext";
 import { useUser } from "../../context/UserContext";
 import apiFetch from "../../utils/apiFetch";
 // ⚡️ MAX PREMIUM REANIMATED IMPORTS
@@ -91,6 +92,7 @@ export default function AuthorDiaryDashboard() {
 
     const { userClan, isInClan } = useClan();
     const { streak, refreshStreak } = useStreak();
+    const { startUpload, updateProgress, nextFile, setStatus, completeUpload, hideProgress } = useUploadProgress();
     const fingerprint = user?.deviceId;
     const router = useRouter();
     const { coins, processTransaction, isProcessingTransaction } = useCoins();
@@ -102,7 +104,7 @@ export default function AuthorDiaryDashboard() {
     const [message, setMessage] = useState("");
 
     // Category States
-    const [category, setCategory] = useState("News");
+    const [category, setCategory] = useState("Review");
     const [clanSubCategory, setClanSubCategory] = useState("General");
 
     const [mediaUrlLink, setMediaUrlLink] = useState("");
@@ -276,7 +278,7 @@ export default function AuthorDiaryDashboard() {
                     text: "Clear Everything",
                     style: "destructive",
                     onPress: async () => {
-                        setTitle(""); setMessage(""); setCategory("News"); setHasPoll(false);
+                        setTitle(""); setMessage(""); setCategory("Review"); setHasPoll(false);
                         setPollOptions(["", ""]); setMediaUrlLink(""); setPickedImage(false); setMediaList([]);
                         try {
                             await AsyncStorage.removeItem(DRAFT_KEY);
@@ -479,14 +481,33 @@ export default function AuthorDiaryDashboard() {
         });
 
         if (!result.canceled) {
-            const newMedia = result.assets.map(asset => ({
-                localUri: asset.uri,
-                type: asset.type === "video" ? "video" : "image",
-                fileSize: asset.fileSize
-            }));
+            // Define your limit (e.g., 100MB in bytes)
+            const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
-            setMediaList(prev => [...prev, ...newMedia]);
-            setPickedImage(true);
+            const validAssets = [];
+            let hasOversizedFile = false;
+
+            result.assets.forEach(asset => {
+                // Check if fileSize exists (it might be null on some Android/iOS versions)
+                if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE_BYTES) {
+                    hasOversizedFile = true;
+                } else {
+                    validAssets.push({
+                        localUri: asset.uri,
+                        type: asset.type === "video" ? "video" : "image",
+                        fileSize: asset.fileSize
+                    });
+                }
+            });
+
+            if (hasOversizedFile) {
+                CustomAlert("File Too Large", "Some files exceed the 100MB limit and were not added.");
+            }
+
+            if (validAssets.length > 0) {
+                setMediaList(prev => [...prev, ...validAssets]);
+                setPickedImage(true);
+            }
         }
     };
 
@@ -525,26 +546,37 @@ export default function AuthorDiaryDashboard() {
             CustomAlert("Error", "Polls category are for posts that includes polls")
             return
         }
+
+        // This triggers your loading animation state
         setSubmitting(true);
         setIsSubmissionTakingLong(false);
 
+        // INCREASED TIMEOUT: Wait 30 seconds before warning the user (prevents panic on large files)
         const slowSubmitTimeout = setTimeout(() => {
             setIsSubmissionTakingLong(true);
-            CustomAlert("Still transmitting...", "Your post is taking longer than usual. It is still being uploaded and will complete shortly.");
-        }, 10000);
+            CustomAlert("Still transmitting...", "Large media files take a bit longer to process. It is still uploading safely.");
+        }, 30000);
 
+        // INCREASED TIMEOUT: Wait 45 seconds before forcing the "optimistic" pending state
         const timeoutPromise = new Promise((resolve) =>
-            setTimeout(() => resolve({ isTimeout: true }), 10000)
+            setTimeout(() => resolve({ isTimeout: true }), 45000)
         );
 
         try {
             const uploadAndSubmit = async () => {
                 const finalMediaAssets = [];
 
+                // Start progress tracking
+                if (mediaList.length > 0) {
+                    startUpload(mediaList.length, "Starting upload...");
+                }
+
                 // 1. Process and upload media payloads to the cloud grid
-                for (const item of mediaList) {
+                for (let fileIndex = 0; fileIndex < mediaList.length; fileIndex++) {
+                    const item = mediaList[fileIndex];
                     if (item.url) { // Already uploaded
                         finalMediaAssets.push(item);
+                        if (fileIndex > 0) nextFile(item.name || `File ${fileIndex + 1}`);
                         continue;
                     }
 
@@ -562,20 +594,61 @@ export default function AuthorDiaryDashboard() {
                     formData.append("timestamp", signData.timestamp);
                     formData.append("signature", signData.signature);
                     formData.append("folder", "posts");
+                    formData.append("resource_type", item.type === "video" ? "video" : "image");
 
-                    const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/${item.type}/upload`, {
-                        method: "POST",
-                        body: formData
+                    // Upload with progress tracking
+                    const cloudRes = await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+
+                        // Track upload progress
+                        xhr.upload.addEventListener('progress', (e) => {
+                            if (e.lengthComputable) {
+                                const percentComplete = (e.loaded / e.total) * 100;
+                                updateProgress(percentComplete, fileIndex + 1, item.type === "video" ? "Uploading video..." : "Uploading image...");
+                            }
+                        });
+
+                        xhr.addEventListener('load', () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                try {
+                                    const response = JSON.parse(xhr.responseText);
+                                    resolve({ ok: true, json: async () => response });
+                                } catch (e) {
+                                    reject(new Error('Invalid response format'));
+                                }
+                            } else {
+                                reject(new Error(`Upload failed with status ${xhr.status}`));
+                            }
+                        });
+
+                        xhr.addEventListener('error', () => reject(new Error('Upload error')));
+                        xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+
+                        xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloudName}/${item.type === "video" ? "video" : "image"}/upload`);
+                        xhr.send(formData);
                     });
 
                     const cloudData = await cloudRes.json();
-                    if (!cloudRes.ok) throw new Error("Media Extraction Failed: Cloud grid rejection.");
+                    if (!cloudRes.ok) throw new Error(cloudData.error?.message || "Media Extraction Failed: Cloud grid rejection.");
+
+                    setStatus('processing', null);
+                    updateProgress(100, fileIndex + 1, "Processing...");
 
                     let finalUrl = cloudData.secure_url;
                     const transform = item.type === "video" ? "c_limit,w_720,br_1.5m,q_auto,vc_auto" : "c_limit,w_1080,f_auto,q_auto";
                     finalUrl = finalUrl.replace("/upload/", `/upload/${transform}/`);
 
-                    finalMediaAssets.push({ url: finalUrl, type: item.type });
+                    finalMediaAssets.push({
+                        url: finalUrl,
+                        type: item.type,
+                        public_id: cloudData.public_id // Saved for future-proofing your database
+                    });
+                }
+
+                // Mark as complete before sending to API
+                if (mediaList.length > 0) {
+                    setStatus('processing', null);
+                    updateProgress(100, mediaList.length, "Finalizing...");
                 }
 
                 // 2. Transmit final payload to the Great Library
@@ -606,6 +679,10 @@ export default function AuthorDiaryDashboard() {
 
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.message || "Failed to create post");
+
+                // Complete the upload progress
+                completeUpload();
+
                 return { ...data, isTimeout: false };
             };
 
@@ -654,11 +731,13 @@ export default function AuthorDiaryDashboard() {
                 await AsyncStorage.setItem("additionalSlot", "0");
             }
         } catch (err) {
+            setStatus('error', err.message || "Upload failed");
             CustomAlert("Error", err.message || "Upload or post submission failed.");
             mutateTodayPosts();
         } finally {
             clearTimeout(slowSubmitTimeout);
             setIsSubmissionTakingLong(false);
+            // This disables the loading animation, ensuring the UI returns to normal
             setSubmitting(false);
         }
     };
@@ -1279,7 +1358,7 @@ export default function AuthorDiaryDashboard() {
                                 <View className="mt-3">
                                     <Text className="text-[12px] font-black uppercase text-gray-500 mb-2 ml-1">Pick Category</Text>
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                        {(isInClan ? ["Clan", "News", "Memes", "Fanart", "Polls", "Gaming", "Review"] : ["News", "Memes", "Fanart", "Polls", "Gaming", "Review"]).map((cat) => (
+                                        {(isInClan ? ["Clan", "Review", "News", "Memes", "Fanart", "Polls", "Gaming"] : ["News", "Review", "Memes", "Fanart", "Polls", "Gaming"]).map((cat) => (
                                             <TouchableOpacity
                                                 key={cat}
                                                 onPress={() => setCategory(cat)}
