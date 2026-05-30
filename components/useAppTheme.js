@@ -14,11 +14,11 @@ const useAppTheme = () => {
     // Primary Surfaces
     bg: isDark ? "#0a0a0a" : "#ffffff",
     card: isDark ? "#111111" : "#f8fafc", // Light mode uses a soft slate-gray tint
-    
+
     // Text Hierarchy
     text: isDark ? "#ffffff" : "#0f172a",
     textSecondary: isDark ? "#94a3b8" : "#64748b", // Critical for readability
-    
+
     // Borders and Dividers
     border: isDark ? "#1e293b" : "#e2e8f0",
 

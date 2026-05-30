@@ -1,0 +1,307 @@
+import { Ionicons } from "@expo/vector-icons";
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'expo-linear-gradient';
+import { memo, useEffect, useMemo, useState } from 'react'; // ⚡️ ADDED: React, useMemo, memo
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+    cancelAnimation, // ⚡️ ADDED: For cleanup
+    interpolate,
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming
+} from 'react-native-reanimated';
+import PeakBadge from "./PeakBadge";
+import { Text } from "./Text";
+
+const PlayerNameplate = memo(({
+    author,
+    themeColor,
+    equippedGlow,
+    auraRank = null,
+    isDark,
+    fontSize = 36,
+    isFeed = false,
+    showPeakBadge = true,
+    showFlame = true,
+    isVisible = false
+}) => {
+    const username = author?.username || author?.name || "GUEST";
+    const peakLevel = author?.peakLevel || 0;
+    const lastStreak = author?.lastStreak || author?.streak || "0";
+
+    const glowConfig = equippedGlow?.visualConfig || {};
+    let hasAura = false;
+    if (auraRank > 0 && auraRank < 5) {
+        hasAura = true;
+    } else if (auraRank == null) {
+        hasAura = false;
+    }
+
+    const hasGlow = !!equippedGlow || hasAura;
+    const isAnimated = hasGlow && glowConfig.isAnimated !== false;
+
+    // Strict fallback. If it's not explicitly glitch or pulse, ALWAYS default to sweep.
+    let animationType = glowConfig.animationType;
+    if (animationType !== 'glitch' && animationType !== 'pulse') {
+        animationType = 'sweep';
+    }
+
+    const badgeSize = useMemo(() => Math.max(16, fontSize * 0.77), [fontSize]);
+    const flameIconSize = useMemo(() => Math.max(12, fontSize * 0.5), [fontSize]);
+
+    // ⚡️ PERFORMANCE OPTIMIZATION: Memoize style overrides to prevent object recreation on re-renders
+    const glitchCyanStyleOverride = useMemo(() => ({ color: '#0ff', opacity: 0.6, textShadowRadius: 0 }), []);
+    const glitchRedStyleOverride = useMemo(() => ({ color: '#f00', opacity: 0.6, textShadowRadius: 0 }), []);
+    const sweepMaskStyleOverride = useMemo(() => ({ color: 'white', textShadowRadius: 0 }), []);
+
+    const progress = useSharedValue(0);
+    const glitchX = useSharedValue(0);
+    const glitchY = useSharedValue(0);
+    const glitchOpacity = useSharedValue(1);
+    const pulseAnim = useSharedValue(0);
+    const loadingOpacity = useSharedValue(1); // ⚡️ NEW: For the measurement loading state
+
+    const [textDimensions, setTextDimensions] = useState({ width: 0, height: 0 });
+    const [isReadyToAnimate, setIsReadyToAnimate] = useState(false);
+
+    // Determine animation rule: only kill animation when it IS in the feed AND NOT visible.
+    const shouldAnimate = !isFeed || isVisible;
+
+    useEffect(() => {
+        // Start a subtle loading animation while waiting for measurement
+        if (textDimensions.width === 0) {
+            loadingOpacity.value = withRepeat(
+                withTiming(0.5, { duration: 800 }),
+                -1,
+                true
+            );
+        } else {
+            cancelAnimation(loadingOpacity);
+            loadingOpacity.value = 1;
+        }
+
+        if (!isAnimated || !shouldAnimate) {
+            progress.value = 0;
+            glitchX.value = 0;
+            glitchY.value = 0;
+            glitchOpacity.value = 1;
+            pulseAnim.value = 0;
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            setIsReadyToAnimate(true);
+
+            if (animationType === 'sweep') {
+                progress.value = withRepeat(
+                    withTiming(1, { duration: 2500 }),
+                    -1, false
+                );
+            }
+            else if (animationType === 'glitch') {
+                glitchX.value = withRepeat(
+                    withSequence(
+                        withTiming(4, { duration: 40 }),
+                        withTiming(-3, { duration: 30 }),
+                        withTiming(2, { duration: 50 }),
+                        withTiming(-1, { duration: 20 }),
+                        withTiming(0, { duration: 1500 }),
+                        withTiming(5, { duration: 30 }),
+                        withTiming(-4, { duration: 40 }),
+                        withTiming(0, { duration: 2500 })
+                    ),
+                    -1, true
+                );
+
+                glitchY.value = withRepeat(
+                    withSequence(
+                        withTiming(0, { duration: 40 }),
+                        withTiming(1, { duration: 30 }),
+                        withTiming(-1, { duration: 50 }),
+                        withTiming(0, { duration: 4000 })
+                    ),
+                    -1, true
+                );
+
+                glitchOpacity.value = withRepeat(
+                    withSequence(
+                        withTiming(1, { duration: 80 }),
+                        withTiming(0.4, { duration: 30 }),
+                        withTiming(1, { duration: 100 }),
+                        withTiming(1, { duration: 3000 })
+                    ),
+                    -1, true
+                );
+            }
+            else if (animationType === 'pulse') {
+                pulseAnim.value = withRepeat(
+                    withTiming(1, { duration: 2000 }),
+                    -1, true
+                );
+            }
+        }, 100);
+
+        return () => {
+            clearTimeout(timer);
+            // ⚡️ CLEANUP: Cancel all animations to save resources
+            cancelAnimation(progress);
+            cancelAnimation(glitchX);
+            cancelAnimation(glitchY);
+            cancelAnimation(glitchOpacity);
+            cancelAnimation(pulseAnim);
+            cancelAnimation(loadingOpacity);
+        };
+    }, [isAnimated, animationType, shouldAnimate, textDimensions.width]);
+
+    const sweepStyle = useAnimatedStyle(() => {
+        const translationRange = textDimensions.width > 0 ? textDimensions.width * 1.5 : 300;
+        return {
+            transform: [{ translateX: interpolate(progress.value, [0, 1], [-translationRange, translationRange]) }]
+        };
+    });
+
+    const glitchStyleRed = useAnimatedStyle(() => ({
+        opacity: glitchOpacity.value,
+        transform: [
+            { translateX: glitchX.value },
+            { translateY: glitchY.value }
+        ]
+    }));
+
+    const glitchStyleCyan = useAnimatedStyle(() => ({
+        opacity: glitchOpacity.value,
+        transform: [
+            { translateX: -glitchX.value },
+            { translateY: -glitchY.value }
+        ]
+    }));
+
+    // ⚡️ PERFORMANCE OPTIMIZATION: Pulses opacity and hardware scale instead of textShadowRadius.
+    // This removes the text re-rasterization bottleneck completely while maintaining a stunning look.
+    const pulseStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(pulseAnim.value, [0, 1], [0.75, 1]),
+        transform: [{ scale: interpolate(pulseAnim.value, [0, 1], [1, 1.03]) }]
+    }));
+
+    const loadingStyle = useAnimatedStyle(() => ({
+        opacity: loadingOpacity.value
+    }));
+
+    const BaseText = ({ styleOverride, onLayout, forceNoShadow }) => (
+        <Text
+            numberOfLines={1}
+            onLayout={onLayout}
+            style={[
+                {
+                    fontSize: fontSize,
+                    lineHeight: fontSize * 1.2,
+                    textShadowColor: (forceNoShadow || !hasGlow) ? 'transparent' : themeColor,
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: (forceNoShadow || !hasGlow) ? 0 : 8,
+                    color: hasGlow ? themeColor : (isDark ? 'white' : '#111827'),
+                },
+                styleOverride
+            ]}
+            className="font-black tracking-widest uppercase"
+        >
+            {username}
+        </Text>
+    );
+
+    const shouldAnimateNow = isAnimated && hasGlow && isReadyToAnimate && textDimensions.width > 0 && shouldAnimate;
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}>
+
+            {/* ⚡️ UNIFIED STRUCTURAL LAYOUT AREA */}
+            <View>
+                {!shouldAnimateNow ? (
+                    <Animated.View style={loadingStyle}>
+                        <BaseText
+                            forceNoShadow={!hasGlow}
+                            onLayout={(e) => {
+                                if (textDimensions.width === 0) {
+                                    setTextDimensions({
+                                        width: Math.ceil(e.nativeEvent.layout.width) + 10,
+                                        height: Math.ceil(e.nativeEvent.layout.height) + 4
+                                    });
+                                }
+                            }}
+                        />
+                    </Animated.View>
+                ) : (
+                    <>
+                        {/* ⚡️ ANIMATION MODE: SWEEP */}
+                        {animationType === 'sweep' && (
+                            <MaskedView
+                                style={{ height: textDimensions.height, width: textDimensions.width }}
+                                maskElement={
+                                    <View style={{ flex: 1, backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'flex-start' }}>
+                                        <BaseText styleOverride={sweepMaskStyleOverride} />
+                                    </View>
+                                }
+                            >
+                                <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'flex-start' }]}>
+                                    <BaseText />
+                                </View>
+
+                                <Animated.View style={[StyleSheet.absoluteFill, sweepStyle, { width: '200%' }]}>
+                                    <LinearGradient
+                                        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.8)', 'rgba(255,255,255,0)']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={{ flex: 1 }}
+                                    />
+                                </Animated.View>
+                            </MaskedView>
+                        )}
+
+                        {/* ⚡️ ANIMATION MODE: GLITCH */}
+                        {animationType === 'glitch' && (
+                            <View style={{ position: 'relative', height: textDimensions.height, width: textDimensions.width }}>
+                                <Animated.View style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 1, justifyContent: 'center' }, glitchStyleCyan]}>
+                                    <BaseText styleOverride={glitchCyanStyleOverride} />
+                                </Animated.View>
+
+                                <Animated.View style={[{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 2, justifyContent: 'center' }, glitchStyleRed]}>
+                                    <BaseText styleOverride={glitchRedStyleOverride} />
+                                </Animated.View>
+
+                                <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, zIndex: 3, justifyContent: 'center' }}>
+                                    <BaseText />
+                                </View>
+                            </View>
+                        )}
+
+                        {/* ⚡️ ANIMATION MODE: PULSE */}
+                        {animationType === 'pulse' && (
+                            <Animated.View style={[pulseStyle, { height: textDimensions.height, width: textDimensions.width, justifyContent: 'center' }]}>
+                                <BaseText />
+                            </Animated.View>
+                        )}
+                    </>
+                )}
+            </View>
+
+            {/* Badges and streaks now maintain absolute tree positioning stability */}
+            {(showPeakBadge && peakLevel > 0) && (
+                <View className="ml-1">
+                    <PeakBadge level={peakLevel} size={badgeSize} />
+                </View>
+            )}
+
+            {(showFlame && lastStreak > 0) && (
+                <View className="flex-row items-center bg-orange-500/10 px-2.5 py-1 rounded-lg">
+                    <Ionicons name="flame" size={flameIconSize} color="#f97316" />
+                    <Text className="text-orange-500 font-black ml-1" style={{ fontSize: flameIconSize - 4 }}>{lastStreak}</Text>
+                </View>
+            )}
+        </View>
+    );
+});
+
+PlayerNameplate.displayName = 'PlayerNameplate';
+
+export default PlayerNameplate;

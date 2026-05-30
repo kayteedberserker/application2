@@ -1,65 +1,93 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import Constants from 'expo-constants';
-import { useEffect, useState, useRef } from 'react';
-import apiFetch from "../utils/apiFetch"
+import * as Updates from 'expo-updates';
+import { useEffect, useState } from 'react';
+import { useMMKV } from 'react-native-mmkv';
+import apiFetch from "../utils/apiFetch";
 
-import { Linking, Modal, Pressable, Text as RNText, useColorScheme, View, Animated, Easing } from 'react-native';
+import { Linking, Modal, Pressable, Text as RNText, useColorScheme, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming
+} from 'react-native-reanimated';
 
-const VERSION_CHECK_URL = 'https://oreblogda.com/api/version'; 
+const VERSION_CHECK_URL = '/version';
 const INSTALLED_VERSION = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+const INSTALLED_RUNTIME = Updates.runtimeVersion || 'v1';
+const SNOOZE_KEY = 'OREBLOGDA_UPDATE_SNOOZE';
+const SNOOZE_DURATION = 60 * 60 * 1000; // 1 Hour in milliseconds
 
-const isUpdateRequired = (installed, latest) => {
+// Helper to check standard app version
+const isAppUpdateRequired = (installed, latest) => {
   if (!latest) return false;
-  const parse = v => v.split('.').map(n => parseInt(n, 10));
-  const [iMajor, iMinor, iPatch] = parse(installed);
-  const [lMajor, lMinor, lPatch] = parse(latest);
-  if (iMajor < lMajor) return true;
-  if (iMajor === lMajor && iMinor < lMinor) return true;
-  if (iMajor === lMajor && iMinor === lMinor && iPatch < lPatch) return true;
+  const installedParts = installed.split('.').map(Number);
+  const latestParts = latest.split('.').map(Number);
+
+  for (let i = 0; i < Math.max(installedParts.length, latestParts.length); i++) {
+    const v1 = installedParts[i] || 0;
+    const v2 = latestParts[i] || 0;
+    if (v2 > v1) return true;
+    if (v2 < v1) return false;
+  }
   return false;
+};
+
+// Helper to check runtime version
+const isRuntimeUpdateRequired = (installed, latest) => {
+
+  if (!latest) return false;
+  const getVersionNumber = (verStr) => {
+    const match = String(verStr).match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+
+  return getVersionNumber(latest) > getVersionNumber(installed);
 };
 
 export default function UpdateHandler() {
   const [visible, setVisible] = useState(false);
   const [latestVersion, setLatestVersion] = useState(null);
   const [isCritical, setIsCritical] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [countdown, setCountdown] = useState(10);
   const [canIgnore, setCanIgnore] = useState(true);
+
+  // Correct MMKV Hook usage
+  const storage = useMMKV();
 
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
-  // Pulse Animation Ref
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useSharedValue(1);
 
   useEffect(() => {
     fetchLatestVersion();
   }, []);
 
-  // Animation Trigger
   useEffect(() => {
     if (visible) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.05,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
+      pulseAnim.value = withRepeat(
+        withSequence(
+          withTiming(1.05, { duration: 800, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      pulseAnim.value = 1;
     }
   }, [visible]);
 
-  // Countdown logic
+  const pulseAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: pulseAnim.value }]
+    };
+  });
+
   useEffect(() => {
     let timer;
     if (visible && isCritical && countdown > 0) {
@@ -77,17 +105,32 @@ export default function UpdateHandler() {
     try {
       const response = await apiFetch(VERSION_CHECK_URL);
       const data = await response.json();
-      if (data.version) {
-        setLatestVersion(data.version);
-        setIsCritical(data.critical);
-        if (isUpdateRequired(INSTALLED_VERSION, data.version)) {
-          setVisible(true);
+
+      if (data.appVersion && data.runtimeVersion) {
+        setLatestVersion(data.appVersion);
+
+        const runtimeNeedsUpdate = isRuntimeUpdateRequired(INSTALLED_RUNTIME, data.runtimeVersion);
+        const appNeedsUpdate = isAppUpdateRequired(INSTALLED_VERSION, data.appVersion);
+
+        const criticalStatus = runtimeNeedsUpdate || data.critical;
+        setIsCritical(criticalStatus);
+
+        if (runtimeNeedsUpdate || appNeedsUpdate) {
+          if (criticalStatus) {
+            setVisible(true);
+          } else {
+            // Background check: only show if snooze expired
+            const lastSnooze = storage.getNumber(SNOOZE_KEY);
+            const now = Date.now();
+
+            if (!lastSnooze || now - lastSnooze > SNOOZE_DURATION) {
+              setVisible(true);
+            }
+          }
         }
       }
     } catch (error) {
       console.error("Version check failed", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -95,18 +138,31 @@ export default function UpdateHandler() {
     Linking.openURL('https://play.google.com/store/apps/details?id=com.kaytee.oreblogda');
   };
 
-  if (isLoading && !visible) return null;
+  const handleSkip = () => {
+    if (!canIgnore) return;
+
+    if (!isCritical) {
+      storage.set(SNOOZE_KEY, Date.now());
+    }
+
+    setVisible(false);
+  };
+
+  // If not visible, return null so it occupies NO space in your layout
+  if (!visible) return null;
 
   const themeColor = isCritical ? "#ef4444" : "#2563eb";
   const shadowColor = isCritical ? "#ff0000" : "#3b82f6";
-
+  if (__DEV__) {
+    return null
+  }
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View className={`flex-1 justify-center items-center px-6 ${isCritical ? 'bg-red-950/90' : 'bg-black/80'}`}>
-        
-        <View 
-          style={{ 
-            borderWidth: 2, 
+
+        <View
+          style={{
+            borderWidth: 2,
             borderColor: themeColor,
             shadowColor: shadowColor,
             shadowOffset: { width: 0, height: 0 },
@@ -116,16 +172,17 @@ export default function UpdateHandler() {
           className={`${isDark ? "bg-[#0d1117]" : "bg-white"} w-full rounded-[32px] overflow-hidden`}
         >
           <View style={{ backgroundColor: themeColor }} className="h-[4px] w-full opacity-50" />
-          
+
           <View className="p-8 items-center">
-            {/* PULSING ICON */}
-            <Animated.View 
-                style={{ 
-                    backgroundColor: `${themeColor}20`, 
-                    borderColor: `${themeColor}40`,
-                    transform: [{ scale: pulseAnim }]
-                }}
-                className="w-16 h-16 rounded-full items-center justify-center mb-6 border"
+            <Animated.View
+              style={[
+                {
+                  backgroundColor: `${themeColor}20`,
+                  borderColor: `${themeColor}40`
+                },
+                pulseAnimatedStyle
+              ]}
+              className="w-16 h-16 rounded-full items-center justify-center mb-6 border"
             >
               <Feather name={isCritical ? "alert-triangle" : "download-cloud"} size={32} color={themeColor} />
             </Animated.View>
@@ -133,38 +190,37 @@ export default function UpdateHandler() {
             <RNText className={`text-center font-[900] uppercase italic tracking-tighter text-2xl mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
               {isCritical ? "Security Breach" : "System Upgrade"}
             </RNText>
-            
+
             <RNText style={{ color: themeColor }} className="text-center text-[10px] font-black uppercase tracking-[3px] mb-4">
               {isCritical ? "PROTOCOL_ALPHA_REQUIRED" : `v${latestVersion} Available`}
             </RNText>
 
             <RNText className="text-center text-sm leading-6 text-gray-500 dark:text-gray-400 mb-8 px-2">
-              {isCritical 
+              {isCritical
                 ? "Emergency patches detected. Current build is unstable. System synchronization required to prevent data loss."
                 : "A new transmission patch is ready. Deploy the latest version to maintain optimal connection."}
             </RNText>
 
             <View className="w-full gap-3">
-              {/* PULSING ACTION BUTTON */}
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <Pressable 
-                    onPress={handleUpdate}
-                    style={{ 
-                        elevation: 10, 
-                        backgroundColor: themeColor,
-                        shadowColor: themeColor,
-                        shadowRadius: 10,
-                        shadowOpacity: 0.5
-                    }}
-                    className="py-4 rounded-2xl flex-row justify-center items-center"
+              <Animated.View style={pulseAnimatedStyle}>
+                <Pressable
+                  onPress={handleUpdate}
+                  style={{
+                    elevation: 10,
+                    backgroundColor: themeColor,
+                    shadowColor: themeColor,
+                    shadowRadius: 10,
+                    shadowOpacity: 0.5
+                  }}
+                  className="py-4 rounded-2xl flex-row justify-center items-center"
                 >
-                    <Ionicons name={isCritical ? "shield-checkmark" : "rocket-sharp"} size={18} color="white" />
-                    <RNText className="text-white font-black uppercase tracking-widest ml-2">Fix System Now</RNText>
+                  <Ionicons name={isCritical ? "shield-checkmark" : "rocket-sharp"} size={18} color="white" />
+                  <RNText className="text-white font-black uppercase tracking-widest ml-2">Fix System Now</RNText>
                 </Pressable>
               </Animated.View>
 
-              <Pressable 
-                onPress={() => canIgnore && setVisible(false)}
+              <Pressable
+                onPress={handleSkip}
                 disabled={!canIgnore}
                 style={{ opacity: canIgnore ? 1 : 0.3 }}
                 className="py-4 rounded-2xl border border-gray-200 dark:border-gray-800"
@@ -179,8 +235,9 @@ export default function UpdateHandler() {
           <View style={{ backgroundColor: themeColor }} className="h-[2px] w-full opacity-10" />
         </View>
 
-        <RNText style={{ color: isCritical ? '#ef4444' : '#6b7280' }} className="text-[9px] mt-4 uppercase tracking-[5px] font-bold">
-          {isCritical ? "SYSTEM_STATUS: COMPROMISED" : `CORE_VERSION: ${INSTALLED_VERSION}`}
+        <RNText style={{ color: isCritical ? '#ef4444' : '#6b7280' }} className="text-[9px] mt-4 uppercase tracking-[5px] font-bold text-center">
+          {isCritical ? "SYSTEM_STATUS: COMPROMISED\n" : ""}
+          CORE: {INSTALLED_VERSION} | RUNTIME: {INSTALLED_RUNTIME}
         </RNText>
       </View>
     </Modal>

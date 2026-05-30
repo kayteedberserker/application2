@@ -8,16 +8,14 @@
     "scheme": "oreblogda",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "owner": "oreblogda",
+    "runtimeVersion": "v7_global",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kaytee.oreblogda.dev",
+      "bundleIdentifier": "com.kaytee.oreblogda",
       "associatedDomains": [
         "applinks:oreblogda.com"
       ]
-    },
-    "notification": {
-      "icon": "./assets/images/notification.png",
-      "color": "#E6F4FE"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,9 +23,8 @@
         "foregroundImage": "./assets/images/myicon.png",
         "backgroundImage": "./assets/images/myicon.png"
       },
-      "package": "com.kaytee.oreblogda.dev",
+      "package": "com.kaytee.oreblogda",
       "googleServicesFile": "./google-services.json",
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "com.android.vending.BILLING"
@@ -100,8 +97,7 @@
       "expo-video"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": false
+      "typedRoutes": true
     },
     "runtimeVersion": "v4_global",
     "updates": {

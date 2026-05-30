@@ -1,0 +1,664 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LegendList } from "@legendapp/list";
+import { useRouter } from 'expo-router';
+import { useColorScheme } from "nativewind";
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Clipboard, DeviceEventEmitter, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useMMKV } from 'react-native-mmkv';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ClanCrest from '../../components/ClanCrest';
+import CoinIcon from '../../components/ClanIcon';
+import { SyncLoading } from "../../components/SyncLoading";
+import { useStreak } from "../../context/StreakContext";
+import { useUser } from "../../context/UserContext";
+import apiFetch from '../../utils/apiFetch';
+
+let CLANS_MEMORY_CACHE = [];
+let USER_STATS_MEMORY_CACHE = null;
+
+const CLANS_CACHE_KEY = 'cached_clans_list';
+const USER_STATS_CACHE_KEY = 'clan_user_stats_cache';
+
+// ⚡️ UPDATED REQUIREMENTS: Level 4 corresponds to the old 25 post requirement (700+ Aura)
+const MIN_RANK_REQUIRED = 4;
+const MIN_STREAK_REQUIRED = 5;
+
+// ⚡️ IMPORTED AURA TIERS
+// ⚡️ IMPORTED AURA TIERS
+export const AURA_TIERS = [
+    { level: 1, req: 0, title: "E-Rank Novice", icon: "🌱", color: "#94a3b8" },
+    { level: 2, req: 100, title: "D-Rank Operative", icon: "⚔️", color: "#34d399" },
+    { level: 3, req: 300, title: "C-Rank Awakened", icon: "🔥", color: "#f87171" },
+    { level: 4, req: 700, title: "B-Rank Elite", icon: "⚡", color: "#a78bfa" },
+    { level: 5, req: 1500, title: "A-Rank Champion", icon: "🛡️", color: "#60a5fa" },
+    { level: 6, req: 3000, title: "S-Rank Legend", icon: "🌟", color: "#fcd34d" },
+    { level: 7, req: 6000, title: "SS-Rank Mythic", icon: "🌀", color: "#f472b6" },
+    { level: 8, req: 12000, title: "Monarch", icon: "👑", color: "#fbbf24" },
+];
+
+const resolveUserRank = (level) => {
+    const safeLevel = Math.max(1, Math.min(8, level || 1));
+    const currentTier = AURA_TIERS[safeLevel - 1];
+    return {
+        title: currentTier.title.toUpperCase().replace(/ /g, "_"),
+        icon: currentTier.icon,
+        color: currentTier.color,
+        level: currentTier.level
+    };
+};
+
+
+
+export default function ClanDiscover() {
+    const storage = useMMKV();
+    const { colorScheme } = useColorScheme();
+    const isDark = colorScheme === "dark";
+
+    const router = useRouter();
+    const insets = useSafeAreaInsets();
+
+    const { user } = useUser();
+    const { streak: streakData } = useStreak();
+
+    const [clans, setClans] = useState(CLANS_MEMORY_CACHE);
+    // ⚡️ Optimized: Read Rank Level directly from the User Context
+    const userRankLevel = user?.currentRankLevel || 1;
+
+    const [search, setSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+
+    const [isCreateModalVisible, setCreateModalVisible] = useState(false);
+    const [showReqModal, setShowReqModal] = useState(false);
+    const [alertConfig, setAlertConfig] = useState({ visible: false, title: '', message: '', type: 'error' });
+
+    const searchTimeout = useRef(null);
+    const scrollRef = useRef(null);
+
+    useEffect(() => {
+        if (CLANS_MEMORY_CACHE.length === 0) {
+            const cached = storage.getString(CLANS_CACHE_KEY);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                CLANS_MEMORY_CACHE = parsed.data || [];
+                setClans(CLANS_MEMORY_CACHE);
+            }
+        }
+        fetchClans(1, search, true);
+    }, [storage]);
+
+    useEffect(() => {
+        if (searchTimeout.current) clearTimeout(searchTimeout.current);
+        searchTimeout.current = setTimeout(() => {
+            fetchClans(1, search, true);
+        }, 500);
+        return () => clearTimeout(searchTimeout.current);
+    }, [search, fetchClans]);
+
+    const showAlert = (title, message, type = 'error') => {
+        setAlertConfig({ visible: true, title, message, type });
+    };
+
+    const saveToDisk = useCallback((key, data) => {
+        try {
+            storage.set(key, JSON.stringify({
+                data,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.error("Cache Save Error", e);
+        }
+    }, [storage]);
+
+    const fetchClans = useCallback(async (pageNum = 1, searchQuery = '', isRefreshing = false) => {
+        if (pageNum > 1) setLoadingMore(true);
+        else if (!isRefreshing && clans.length === 0) setLoading(true);
+
+        try {
+            const res = await apiFetch(`/clans?page=${pageNum}&limit=10&search=${searchQuery}&fingerprint=${user?.deviceId || ''}`);
+            const data = await res.json();
+
+            if (res.ok) {
+                const newClans = data.clans || [];
+
+                setClans(prev => {
+                    const updatedList = isRefreshing || pageNum === 1 ? newClans : [...prev, ...newClans];
+                    if (!searchQuery && pageNum === 1) {
+                        CLANS_MEMORY_CACHE = updatedList;
+                        saveToDisk(CLANS_CACHE_KEY, updatedList);
+                    }
+                    return updatedList;
+                });
+
+                setHasMore(data.hasMore);
+                setPage(pageNum);
+            }
+        } catch (err) {
+            console.error("Fetch Clans Error:", err);
+        } finally {
+            setLoading(false);
+            setLoadingMore(false);
+        }
+    }, [clans.length, saveToDisk, user?.deviceId]);
+
+
+
+    const handleLoadMore = () => {
+        if (!loadingMore && hasMore && !loading) {
+            fetchClans(page + 1, search);
+        }
+    };
+
+    const onRefresh = () => {
+        fetchClans(1, search, true);
+    };
+
+    const handlePressCreate = () => {
+        const currentStreak = streakData?.streak || 0;
+        // ⚡️ Check against new MIN_RANK_REQUIRED (Level 4) using the Context Level
+        if (userRankLevel < MIN_RANK_REQUIRED || currentStreak < MIN_STREAK_REQUIRED) {
+            setShowReqModal(true);
+        } else {
+            setCreateModalVisible(true);
+        }
+    };
+
+    const renderItem = useCallback(({ item, index }) => (
+        <ClanCard
+            clan={item}
+            lbRank={item.lbRank || index + 1}
+            isDark={isDark}
+            refreshClans={onRefresh}
+            showAlert={showAlert}
+        />
+    ), [isDark, onRefresh]);
+
+    return (
+        <View className={`flex-1 ${isDark ? "bg-black" : "bg-zinc-50"}`} style={{ paddingTop: insets.top }}>
+            {/* HEADER */}
+            <View className="flex-row items-center px-6 py-4 justify-between">
+                <View>
+                    <Text className={`text-3xl font-black tracking-tighter ${isDark ? "text-white" : "text-zinc-900"}`}>CLANS</Text>
+                    <View className="flex-row items-center">
+                        <View className="h-[2px] w-4 bg-blue-600 mr-2" />
+                        <Text className="text-blue-600 text-[10px] font-black tracking-[2px] uppercase">Global Archives</Text>
+                    </View>
+                </View>
+                <TouchableOpacity
+                    onPress={onRefresh}
+                    className={`w-12 h-12 items-center justify-center rounded-2xl border ${isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200 shadow-sm"}`}
+                >
+                    <Ionicons name="refresh" size={20} color={isDark ? "#fff" : "#000"} />
+                </TouchableOpacity>
+            </View>
+
+            {/* SEARCH BAR */}
+            <View className="flex-row gap-3 px-6 mb-6">
+                <View className={`flex-1 flex-row items-center rounded-3xl px-5 h-16 border ${isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-zinc-100 shadow-sm"}`}>
+                    <Ionicons name="search" size={20} color={isDark ? "#475569" : "#94a3b8"} />
+                    <TextInput
+                        placeholder="Search archives..."
+                        placeholderTextColor={isDark ? "#475569" : "#94a3b8"}
+                        className={`flex-1 ml-3 font-bold text-base ${isDark ? "text-white" : "text-zinc-900"}`}
+                        value={search}
+                        onChangeText={setSearch}
+                    />
+                </View>
+                <TouchableOpacity
+                    className="w-16 h-16 bg-blue-600 rounded-3xl items-center justify-center shadow-xl shadow-blue-600/40"
+                    onPress={handlePressCreate}
+                >
+                    <Ionicons name="add" size={32} color="#fff" />
+                </TouchableOpacity>
+            </View>
+
+            {loading && clans.length === 0 ? (
+                <View className="flex-1 items-center justify-center">
+                    <SyncLoading message='Scanning Records...' />
+                </View>
+            ) : (
+                <View style={{ flex: 1 }}>
+                    <LegendList
+                        ref={scrollRef}
+                        data={clans}
+                        keyExtractor={(item) => item.tag}
+                        renderItem={renderItem}
+                        removeClippedSubviews={true}
+
+                        estimatedItemSize={450}
+                        drawDistance={600}
+                        recycleItems={true}
+
+                        contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120, paddingTop: 10 }}
+                        showsVerticalScrollIndicator={false}
+                        onRefresh={onRefresh}
+                        refreshing={loading && clans.length > 0}
+                        onEndReached={handleLoadMore}
+                        onEndReachedThreshold={0.5}
+                        ListFooterComponent={() => loadingMore ? (
+                            <View className="py-10"><ActivityIndicator color="#2563eb" /></View>
+                        ) : (
+                            <View className="h-20" />
+                        )}
+                    />
+                </View>
+            )}
+
+            {/* MODALS */}
+            <RequirementModal
+                visible={showReqModal}
+                onClose={() => setShowReqModal(false)}
+                stats={{ rankLevel: userRankLevel, aura: user?.aura || 0, streak: streakData?.streak || 0 }}
+                isDark={isDark}
+            />
+
+            <CreateClanModal
+                visible={isCreateModalVisible}
+                isDark={isDark}
+                onClose={() => setCreateModalVisible(false)}
+                showAlert={showAlert}
+                onSuccess={(newClan) => {
+                    setClans(prev => [newClan, ...prev]);
+                    setCreateModalVisible(false);
+                }}
+            />
+
+            <CustomAlert
+                config={alertConfig}
+                onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+                isDark={isDark}
+            />
+        </View>
+    );
+}
+
+// ⚡️ UPDATED: Requirement Modal explicitly stating the Target Level and Rank Name
+const RequirementModal = memo(({ visible, onClose, stats, isDark }) => {
+
+    // ⚡️ Added flex-1 and text wrapping so long rank titles don't break the layout
+    const RequirementRow = ({ label, currentStr, targetStr, progress, icon, activeColor }) => (
+        <View className={`mb-6 p-5 rounded-[30px] border ${isDark ? "bg-black border-zinc-800" : "bg-zinc-50 border-zinc-200 shadow-sm"}`}>
+            <View className="flex-row justify-between items-center mb-3">
+                <View className="flex-row items-center flex-1 pr-2">
+                    <View className={`w-8 h-8 rounded-full items-center justify-center shrink-0`} style={{ backgroundColor: `${activeColor}20` }}>
+                        <Ionicons name={icon} size={16} color={activeColor} />
+                    </View>
+                    <Text numberOfLines={2} className={`ml-3 flex-1 font-black text-[11px] uppercase tracking-widest ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>
+                        {label}
+                    </Text>
+                </View>
+                <Text className="font-black text-base shrink-0" style={{ color: activeColor }}>
+                    {currentStr}<Text className="text-zinc-500 font-medium text-xs"> / {targetStr}</Text>
+                </Text>
+            </View>
+            <View className={`h-2 w-full rounded-full overflow-hidden ${isDark ? "bg-zinc-900" : "bg-zinc-200"}`}>
+                <View
+                    style={{ width: `${Math.min(progress, 100)}%`, backgroundColor: activeColor }}
+                    className="h-full rounded-full shadow-lg"
+                />
+            </View>
+        </View>
+    );
+
+    // ⚡️ Resolve the target rank dynamically so it automatically reads "B-Rank Elite"
+    const targetRank = resolveUserRank(MIN_RANK_REQUIRED);
+    const currRank = resolveUserRank(stats.rankLevel || 1);
+
+    const targetAura = AURA_TIERS[MIN_RANK_REQUIRED - 1].req;
+    const currentAura = stats.aura || 0;
+
+    // ⚡️ Dynamic Colors: Green if completed, otherwise use the color of their current Tier
+    const auraColor = currentAura >= targetAura ? "#10b981" : currRank.color;
+    const streakColor = stats.streak >= MIN_STREAK_REQUIRED ? "#10b981" : "#f97316";
+
+    return (
+        <Modal visible={visible} transparent animationType="fade">
+            <View className="flex-1 justify-center items-center bg-black/90 px-8">
+                <View className={`w-full rounded-[45px] p-8 border ${isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"}`}>
+                    <View className="items-center mb-8">
+                        <View className="w-20 h-20 bg-blue-600/10 rounded-full items-center justify-center mb-4 border border-blue-600/20">
+                            <Ionicons name="lock-closed" size={38} color="#2563eb" />
+                        </View>
+                        <Text className={`text-2xl font-black text-center tracking-tighter ${isDark ? "text-white" : "text-zinc-900"}`}>INSUFFICIENT LEGACY</Text>
+                        <Text className="text-blue-600 font-bold text-[10px] uppercase tracking-[2px] text-center mt-1">Foundational requirements not met</Text>
+                    </View>
+
+                    {/* ⚡️ Now it explicitly tells them to reach Level 4 and shows the exact Rank Title */}
+                    <RequirementRow
+                        label={`Reach Lv.${MIN_RANK_REQUIRED} ${targetRank.title.replace(/_/g, ' ')}`}
+                        currentStr={currentAura.toLocaleString()}
+                        targetStr={targetAura.toLocaleString()}
+                        progress={(currentAura / targetAura) * 100}
+                        icon="flash"
+                        activeColor={auraColor}
+                    />
+
+                    {/* ⚡️ Updated the label here too for clarity */}
+                    <RequirementRow
+                        label={`Maintain a ${MIN_STREAK_REQUIRED}-Day Streak`}
+                        currentStr={stats.streak}
+                        targetStr={MIN_STREAK_REQUIRED}
+                        progress={(stats.streak / MIN_STREAK_REQUIRED) * 100}
+                        icon="flame"
+                        activeColor={streakColor}
+                    />
+
+                    <TouchableOpacity onPress={onClose} className="bg-blue-600 p-6 rounded-[28px] items-center shadow-xl shadow-blue-600/40 mt-2">
+                        <Text className="text-white font-black uppercase tracking-widest text-xs">I Understand</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+});
+
+// ... CustomAlert, RequirementModal, ClanCard components remain unchanged
+
+const CustomAlert = memo(({ config, onClose, isDark }) => {
+    if (!config.visible) return null;
+    return (
+        <Modal transparent animationType="fade" visible={config.visible}>
+            <View className="flex-1 justify-center items-center bg-black/80 px-10">
+                <View className={`w-full p-8 rounded-[40px] border ${isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"}`}>
+                    <View className="items-center mb-6">
+                        <View className={`w-16 h-16 rounded-full items-center justify-center mb-4 ${config.type === 'error' ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
+                            <Ionicons name={config.type === 'error' ? "alert-circle" : "checkmark-circle"} size={36} color={config.type === 'error' ? "#ef4444" : "#10b981"} />
+                        </View>
+                        <Text className={`text-2xl font-black text-center tracking-tighter ${isDark ? "text-white" : "text-zinc-900"}`}>{config.title}</Text>
+                        <Text className={`text-sm font-bold text-center mt-2 px-2 ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>{config.message}</Text>
+                    </View>
+                    <TouchableOpacity onPress={onClose} className="bg-blue-600 p-5 rounded-[22px] items-center shadow-lg shadow-blue-600/30">
+                        <Text className="text-white font-black uppercase tracking-widest text-[12px]">Dismiss</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+});
+
+
+const ClanCard = memo(({ clan, lbRank, isDark, refreshClans, showAlert }) => {
+    const storage = useMMKV();
+    const { user } = useUser();
+
+    const [actionLoading, setActionLoading] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [isFollowing, setIsFollowing] = useState(false);
+
+    const getRankInfo = (rank) => {
+        const ranks = {
+            6: { title: "The Akatsuki", color: "#2563eb" },
+            5: { title: "The Espada", color: "#6366f1" },
+            4: { title: "Phantom Troupe", color: "#a855f7" },
+            3: { title: "Upper Moon", color: "#f59e0b" },
+            2: { title: "Squad 13", color: "#10b981" },
+            1: { title: "Wandering Ron'ins", color: "#71717a" }
+        };
+        return ranks[rank] || ranks[1];
+    };
+
+    const equippedGlow = clan.specialInventory?.find(i => i.category === 'GLOW' && i.isEquipped);
+    const activeGlowColor = equippedGlow?.visualConfig?.primaryColor || equippedGlow?.visualData?.glowColor || null;
+    const rankInfo = getRankInfo(clan.rank);
+
+    // ⚡️ SILENT BACKGROUND CHECK (Reads from fast RAM instead of spamming Server)
+    useEffect(() => {
+        const followedClansStr = storage.getString('followed_clans');
+        if (followedClansStr) {
+            const clanList = JSON.parse(followedClansStr);
+            if (clanList.includes(clan.tag)) {
+                setIsFollowing(true);
+            }
+        }
+    }, [clan.tag, storage]);
+
+    const copyToClipboard = () => {
+        Clipboard.setString(clan.tag);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    // ⚡️ YOUR EXACT FUNCTION ADDED HERE
+    const performFollowAction = async (action) => {
+        if (!user) return;
+        setActionLoading(true);
+
+        try {
+            const res = await apiFetch(`/clans/follow`, {
+                method: "POST",
+                body: JSON.stringify({ clanTag: clan.tag, deviceId: user.deviceId, action: action })
+            });
+
+            const followedClansStr = storage.getString('followed_clans');
+            const checkedClansStr = storage.getString('checked_clans');
+            let clanList = followedClansStr ? JSON.parse(followedClansStr) : [];
+            let checkedList = checkedClansStr ? JSON.parse(checkedClansStr) : [];
+
+            if (res.ok) {
+                if (action === "follow") {
+                    setIsFollowing(true);
+                    if (!clanList.includes(clan.tag)) clanList.push(clan.tag);
+                    checkedList = checkedList.filter(t => t !== clan.tag);
+                    showAlert("CLAN JOINED", `You are now following ${clan?.name}.`, "success");
+                } else {
+                    setIsFollowing(false);
+                    clanList = clanList.filter(t => t !== clan.tag);
+                    if (!checkedList.includes(clan.tag)) checkedList.push(clan.tag);
+                    showAlert("UNFOLLOWED", `You have left ${clan?.name}.`, "success");
+                }
+                storage.set('followed_clans', JSON.stringify(clanList));
+                storage.set('checked_clans', JSON.stringify(checkedList));
+
+                // Refresh the global list to update follower counts instantly
+                if (refreshClans) refreshClans();
+            }
+
+            // 🛡️ THE 419 SYNC: If the server says we are already following, force sync the UI and Cache
+            if (res.status === 419) {
+                setIsFollowing(true);
+                if (!clanList.includes(clan.tag)) clanList.push(clan.tag);
+                checkedList = checkedList.filter(t => t !== clan.tag);
+
+                storage.set('followed_clans', JSON.stringify(clanList));
+                storage.set('checked_clans', JSON.stringify(checkedList));
+
+                showAlert("CLAN JOINED", `You are already following ${clan?.name}.`, "success");
+            }
+
+            // Catch actual failures (not 419)
+            if (!res.ok && res.status !== 419) {
+                const data = await res.json();
+                showAlert("ACTION FAILED", data.message || "Action could not be completed.");
+            }
+
+        } catch (err) {
+            showAlert("CONNECTION ERROR", "Check your internet connection.");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleAuthorRequest = async () => {
+        if (!user) return;
+        setActionLoading(true);
+        try {
+            const res = await apiFetch(`/clans/${clan.tag}/join`, {
+                method: "POST",
+                body: JSON.stringify({ deviceId: user.deviceId, username: user.username })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showAlert("REQUEST SENT", "Your application is under review.", "success");
+            } else {
+                showAlert("REQUEST FAILED", data.message || "Requirement not met.");
+            }
+        } catch (err) {
+            showAlert("CONNECTION ERROR", "Backend is not responding.");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    return (
+        <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => DeviceEventEmitter.emit("navigateSafely", `/clans/${clan.tag}`)}
+            className={`w-full rounded-[40px] border mb-6 overflow-hidden relative ${isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200 shadow-xl shadow-zinc-200"}`}
+            style={{ height: 400 }}
+        >
+            {/* Top Stats Row */}
+            <View className="flex-row justify-between items-center p-6 pb-2">
+                <View className="bg-blue-600/10 border border-blue-600/20 px-3 py-1.5 rounded-xl flex-row items-center">
+                    <Ionicons name="trophy" size={10} color="#2563eb" />
+                    <Text className="text-blue-600 text-[10px] font-black ml-1.5 uppercase">Rank #{lbRank}</Text>
+                </View>
+                <View className="flex-row items-center bg-zinc-500/10 px-3 py-1.5 rounded-xl">
+                    <Ionicons name="shield-checkmark" size={12} color={isDark ? "#a1a1aa" : "#71717a"} />
+                    <Text className={`text-[10px] font-black ml-1.5 ${isDark ? "text-zinc-400" : "text-zinc-500"}`}>{clan.badges?.length || 0} Badges</Text>
+                </View>
+            </View>
+
+            {/* Avatar & Info Section */}
+            <View className="items-center px-6">
+                <ClanCrest glowColor={activeGlowColor} rank={clan?.rank} size={120} />
+                <Text numberOfLines={1} className={`text-2xl mt-3 font-black text-center tracking-tight ${isDark ? "text-white" : "text-zinc-900"}`}>{clan.name}</Text>
+
+                <TouchableOpacity onPress={copyToClipboard} className="flex-row items-center mt-1 bg-zinc-500/5 px-3 py-1 rounded-full active:opacity-50">
+                    <Text className="text-zinc-500 text-[10px] font-bold tracking-widest uppercase">#{clan.tag}</Text>
+                    <Ionicons name={copied ? "checkmark" : "copy-outline"} size={10} color={copied ? "#10b981" : "#71717a"} style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
+
+                <View className="flex-row items-center mt-4">
+                    <Text style={{ color: rankInfo.color }} className="text-[9px] font-black tracking-[3px] uppercase">{rankInfo.title}</Text>
+                </View>
+
+                <View className="mt-5 items-center flex-row bg-blue-500/5 px-4 py-2 rounded-xl">
+                    <Ionicons name="people" size={14} color="#3b82f6" />
+                    <Text className={`text-xs font-black ml-2 ${isDark ? "text-blue-400" : "text-blue-600"}`}>{clan.followerCount || 0}</Text>
+                    <Text className="text-[9px] text-blue-500/60 uppercase font-black ml-1 tracking-wider">Followers</Text>
+                </View>
+            </View>
+
+            {/* Actions Section */}
+            <View className="mt-auto flex-row p-5 gap-3 border-t border-zinc-500/10 bg-zinc-500/5">
+                <TouchableOpacity
+                    onPress={() => performFollowAction(isFollowing ? "unfollow" : "follow")}
+                    disabled={actionLoading}
+                    className={`flex-1 h-12 rounded-2xl flex-row items-center justify-center shadow-md ${isFollowing ? 'bg-zinc-800' : 'bg-blue-600 shadow-blue-600/20'}`}
+                >
+                    {actionLoading ? <ActivityIndicator size="small" color="white" /> : (
+                        <>
+                            <Ionicons name={isFollowing ? "checkmark-circle" : "heart"} size={16} color="white" />
+                            <Text className="text-white font-bold text-[12px] ml-2 uppercase">{isFollowing ? "Following" : "Follow"}</Text>
+                        </>
+                    )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={handleAuthorRequest}
+                    disabled={actionLoading}
+                    className={`flex-1 h-12 rounded-2xl flex-row items-center justify-center border ${isDark ? "bg-zinc-800 border-zinc-700" : "bg-white border-zinc-200"}`}
+                >
+                    {actionLoading ? <ActivityIndicator size="small" color={isDark ? "white" : "black"} /> : (
+                        <><Ionicons name="add-circle-outline" size={16} color={isDark ? "#fff" : "#000"} /><Text className={`font-bold text-[12px] ml-2 uppercase ${isDark ? "text-white" : "text-zinc-900"}`}>Apply</Text></>
+                    )}
+                </TouchableOpacity>
+            </View>
+        </TouchableOpacity>
+    );
+});
+
+const CreateClanModal = memo(({ visible, onClose, onSuccess, isDark, showAlert }) => {
+    const { user } = useUser();
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    const [isCreating, setIsCreating] = useState(false);
+
+    const handleCreate = async () => {
+        if (!name || !user) return;
+        setIsCreating(true);
+        try {
+            const res = await apiFetch("/clans/create", {
+                method: "POST",
+                body: JSON.stringify({ name, description: desc, deviceId: user.deviceId })
+            });
+            const data = await res.json()
+
+            if (res.ok) {
+                onSuccess(data.clan);
+                setName(''); setDesc('');
+            } else {
+                showAlert("CREATION DENIED", `${data.message}` || "This clan name might be taken.");
+            }
+        } catch (err) {
+            showAlert("NETWORK ERROR", "Failed to reach the Archives. Check your connection.");
+            console.error(err);
+        } finally {
+            setIsCreating(false);
+        }
+    };
+
+    return (
+        <Modal visible={visible} animationType="slide" transparent>
+            <View className={`flex-1 justify-end ${isDark ? "bg-black/95" : "bg-zinc-900/70"}`}>
+                <View className={`rounded-t-[60px] h-[85%] border-t ${isDark ? "bg-zinc-900 border-zinc-800" : "bg-white border-zinc-200"}`}>
+                    <View className="w-16 h-1.5 bg-zinc-500/20 rounded-full self-center mt-4" />
+
+                    <View className="flex-row justify-between items-center px-10 pt-8 pb-6">
+                        <View>
+                            <Text className={`text-4xl font-black tracking-tighter ${isDark ? "text-white" : "text-zinc-900"}`}>FOUND CLAN</Text>
+                            <Text className="text-blue-600 font-bold text-[11px] uppercase tracking-[4px]">Establish your power</Text>
+                        </View>
+                        <TouchableOpacity onPress={onClose} className={`w-14 h-14 rounded-3xl items-center justify-center border ${isDark ? "bg-zinc-800 border-zinc-700" : "bg-zinc-100 border-zinc-200"}`}>
+                            <Ionicons name="close" size={28} color={isDark ? "#fff" : "#000"} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView className="px-10 flex-1" showsVerticalScrollIndicator={false}>
+                        <View className="mb-8 mt-4">
+                            <Text className="text-zinc-500 font-black mb-3 text-[11px] uppercase tracking-[2px] ml-2">Clan Identity</Text>
+                            <TextInput
+                                className={`p-7 rounded-[30px] border font-black text-xl ${isDark ? "bg-black text-white border-zinc-800" : "bg-zinc-50 text-zinc-900 border-zinc-200"}`}
+                                placeholder="e.g. Phantom Troupe"
+                                placeholderTextColor={isDark ? "#3f3f46" : "#a1a1aa"}
+                                value={name}
+                                onChangeText={setName}
+                            />
+                        </View>
+
+                        <View className="mb-10">
+                            <Text className="text-zinc-500 font-black mb-3 text-[11px] uppercase tracking-[2px] ml-2">The Manifesto</Text>
+                            <TextInput
+                                className={`p-7 rounded-[30px] border h-44 font-bold text-lg ${isDark ? "bg-black text-white border-zinc-800" : "bg-zinc-50 text-zinc-900 border-zinc-200"}`}
+                                placeholder="State your mission..."
+                                placeholderTextColor={isDark ? "#3f3f46" : "#a1a1aa"}
+                                multiline
+                                textAlignVertical="top"
+                                value={desc}
+                                onChangeText={setDesc}
+                            />
+                        </View>
+
+                        <TouchableOpacity
+                            className={`bg-blue-600 p-5 px-6 rounded-[35px] items-center mb-12 shadow-2xl shadow-blue-600/50 ${isCreating ? 'opacity-70' : ''}`}
+                            onPress={handleCreate}
+                            disabled={isCreating}
+                        >
+                            {isCreating ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <View className="flex-row items-center">
+                                    <Text className="text-white font-black text-[18px] uppercase tracking-tighter mr-2">Confirm Foundation</Text>
+                                    <CoinIcon size={22} type='OC' />
+                                    <Ionicons name="chevron-forward" size={20} color="white" />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </ScrollView>
+                </View>
+            </View>
+        </Modal>
+    );
+});

@@ -7,15 +7,17 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   TextInput,
   TouchableOpacity,
+  useColorScheme,
   View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Text';
+import TopBar from '../../components/Topbar';
 import THEME from '../../components/useAppTheme';
-import apiFetch from "../../utils/apiFetch"
+import apiFetch from "../../utils/apiFetch";
 
 const { width } = Dimensions.get('window');
 
@@ -23,7 +25,7 @@ export default function Contact() {
   const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", message: "", type: "General" });
   const [status, setStatus] = useState({ loading: false, success: "", error: "" });
-
+  const isDark = useColorScheme() === "dark";
   const handleChange = (key, value) => {
     setForm({ ...form, [key]: value });
   };
@@ -37,7 +39,7 @@ export default function Contact() {
     setStatus({ loading: true, success: "", error: "" });
 
     try {
-      const res = await apiFetch("https://oreblogda.com/api/contact", {
+      const res = await apiFetch("/contact", {
         method: "POST",
         body: JSON.stringify(form),
       });
@@ -50,27 +52,36 @@ export default function Contact() {
       } else {
         setStatus({ loading: false, success: "", error: data.error || "Something went wrong." });
       }
-    } catch {
+    } catch (err) {
       setStatus({ loading: false, success: "", error: "Network error, check your connection." });
     }
   };
 
+  // ⚡️ DYNAMIC PLACEHOLDER LOGIC
+  const getMessagePlaceholder = () => {
+    if (form.type === "Account Recovery") {
+      return "ENTER EXACT CALLSIGN (USERNAME), CLAN NAME, APPROXIMATE OC BALANCE, OR ANY SPECIFIC DETAILS TO VERIFY YOUR IDENTITY...";
+    }
+    return "TYPE YOUR MESSAGE HERE...";
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: THEME.bg }}>
+      <TopBar isDark={isDark} />
       {/* --- Ambient Background Glows --- */}
       <View style={{ position: 'absolute', top: -50, right: -50, width: 300, height: 300, borderRadius: 150, backgroundColor: THEME.glowBlue }} />
       <View style={{ position: 'absolute', bottom: 100, left: -100, width: 350, height: 350, borderRadius: 175, backgroundColor: THEME.glowRed }} />
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
       >
         <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator={false}>
-          
+
           {/* --- Header --- */}
           <View className="flex-row items-center mt-8 mb-8">
-            <TouchableOpacity 
-              onPress={() => router.back()} 
+            <TouchableOpacity
+              onPress={() => router.back()}
               style={{ backgroundColor: THEME.card, borderColor: THEME.border }}
               className="w-12 h-12 items-center justify-center rounded-2xl border-2"
             >
@@ -83,12 +94,12 @@ export default function Contact() {
           </View>
 
           <Text style={{ color: THEME.textSecondary || '#64748b' }} className="font-medium mb-10 leading-6 px-1">
-            Have a bug to report or a suggestion for the community? Initiate an uplink and our THE SYSTEM will decrypt your message.
+            Have a bug to report or need to recover your identity? Initiate an uplink and THE SYSTEM will decrypt your message.
           </Text>
 
           {/* --- Form Fields --- */}
           <View className="space-y-6">
-            
+
             {/* Name Input */}
             <View>
               <Text style={{ color: THEME.textSecondary || '#475569' }} className="font-black uppercase text-[9px] tracking-[0.2em] mb-2 ml-1">Identity Tag</Text>
@@ -128,6 +139,8 @@ export default function Contact() {
                   style={{ color: THEME.text }}
                 >
                   <Picker.Item label="General Inquiry" value="General" color={Platform.OS === 'ios' ? THEME.text : undefined} />
+                  {/* ⚡️ ADDED ACCOUNT RECOVERY OPTION */}
+                  <Picker.Item label="Account Recovery" value="Account Recovery" color={Platform.OS === 'ios' ? THEME.text : undefined} />
                   <Picker.Item label="Community Join Request" value="Community" color={Platform.OS === 'ios' ? THEME.text : undefined} />
                   <Picker.Item label="Bug Report" value="Bug" color={Platform.OS === 'ios' ? THEME.text : undefined} />
                   <Picker.Item label="Suggestion" value="Suggestion" color={Platform.OS === 'ios' ? THEME.text : undefined} />
@@ -142,7 +155,7 @@ export default function Contact() {
               <TextInput
                 value={form.message}
                 onChangeText={(v) => handleChange("message", v)}
-                placeholder="TYPE YOUR MESSAGE HERE..."
+                placeholder={getMessagePlaceholder()} // ⚡️ DYNAMIC PLACEHOLDER APPLIED
                 placeholderTextColor={THEME.textSecondary + '80' || "#334155"}
                 multiline
                 numberOfLines={6}
@@ -188,7 +201,7 @@ export default function Contact() {
           </View>
 
           <View className="h-24 items-center justify-center">
-              <Text style={{ color: THEME.textSecondary || '#334155' }} className="font-black text-[8px] uppercase tracking-[0.4em]">Secure Transmission Channel v1.2</Text>
+            <Text style={{ color: THEME.textSecondary || '#334155' }} className="font-black text-[8px] uppercase tracking-[0.4em]">Secure Transmission Channel v1.2</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
